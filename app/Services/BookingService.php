@@ -318,13 +318,41 @@ class BookingService
 
         // Check if slot time aligns with slot intervals
         // Slot should start at valid intervals: workStart + n * (duration + break_between)
+        // However, when multiple services are selected, slots are generated using max duration
+        // So we need to be more flexible - check if the slot can fit within the schedule
         $slotInterval = $config->duration_minutes + $config->break_between_minutes;
         $minutesFromStart = $workStart->diffInMinutes($startTime);
         
-        if ($minutesFromStart % $slotInterval !== 0) {
+        // Allow slots that are at valid intervals OR can accommodate the service duration
+        // This handles cases where multiple services with different intervals are selected
+        $isAtValidInterval = ($minutesFromStart % $slotInterval === 0);
+        
+        // Also check if there's enough time from this start to fit the service duration
+        // and that it doesn't conflict with breaks or end of day
+        $slotEndTime = $startTime->copy()->addMinutes($config->duration_minutes);
+        $hasEnoughTime = $slotEndTime->lte($workEnd);
+        
+        // Check if slot doesn't overlap with breaks (we already checked breaks above, but need to check with service duration)
+        $overlapsBreak = false;
+        foreach ($breaks as $break) {
+            $breakStartTimeStr = $this->normalizeTimeString($break->start_time);
+            $breakEndTimeStr = $this->normalizeTimeString($break->end_time);
+            $breakStart = Carbon::parse($date->format('Y-m-d') . ' ' . $breakStartTimeStr);
+            $breakEnd = Carbon::parse($date->format('Y-m-d') . ' ' . $breakEndTimeStr);
+            
+            if ($startTime->lt($breakEnd) && $slotEndTime->gt($breakStart)) {
+                $overlapsBreak = true;
+                break;
+            }
+        }
+        
+        // If slot is at valid interval, always allow (standard case)
+        // If not at valid interval but has enough time and doesn't overlap breaks, 
+        // allow it (for multi-service bookings with different intervals)
+        if (!$isAtValidInterval && (!$hasEnoughTime || $overlapsBreak)) {
             return [
                 'valid' => false,
-                'message' => 'Time slot does not align with available booking intervals',
+                'message' => 'Time slot does not align with available booking intervals or conflicts with schedule',
             ];
         }
 
