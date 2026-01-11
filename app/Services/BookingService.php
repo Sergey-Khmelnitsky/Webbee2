@@ -37,27 +37,76 @@ class BookingService
             $createdAppointments = [];
             $errors = [];
 
+            // First, load all services and find maximum duration
+            $services = [];
+            $maxDuration = 0;
+            $allServiceIds = array_unique(array_column($bookings, 'service_id'));
+            
+            $loadedServices = Service::with(['configuration', 'schedules', 'breaks', 'holidays'])
+                ->whereIn('id', $allServiceIds)
+                ->where('is_active', true)
+                ->get()
+                ->keyBy('id');
+
+            foreach ($allServiceIds as $serviceId) {
+                if (!isset($loadedServices[$serviceId])) {
+                    $errors[] = "Service ID {$serviceId}: Service not found or inactive";
+                    continue;
+                }
+
+                $service = $loadedServices[$serviceId];
+                $config = $service->configuration;
+                
+                if (!$config) {
+                    $errors[] = "Service ID {$serviceId}: Service configuration not found";
+                    continue;
+                }
+
+                $services[$serviceId] = [
+                    'service' => $service,
+                    'config' => $config,
+                ];
+
+                if ($config->duration_minutes > $maxDuration) {
+                    $maxDuration = $config->duration_minutes;
+                }
+            }
+
+            // If we have errors loading services, return early
+            if (!empty($errors)) {
+                DB::rollBack();
+                return [
+                    'success' => false,
+                    'appointments' => null,
+                    'message' => 'Some services failed to load.',
+                    'errors' => $errors,
+                ];
+            }
+
+            // Validate that the actual duration matches the maximum duration (for multi-service bookings)
+            $actualDuration = $startTime->diffInMinutes($endTime);
+            if ($actualDuration != $maxDuration) {
+                DB::rollBack();
+                return [
+                    'success' => false,
+                    'appointments' => null,
+                    'message' => "Appointment duration must be {$maxDuration} minutes (maximum duration of selected services).",
+                    'errors' => [],
+                ];
+            }
+
             // Validate and create each booking separately
             foreach ($bookings as $index => $booking) {
                 $serviceId = $booking['service_id'];
                 $participants = $booking['participants'];
 
-                // Validate service
-                $service = Service::with(['configuration', 'schedules', 'breaks', 'holidays'])
-                    ->where('id', $serviceId)
-                    ->where('is_active', true)
-                    ->first();
-
-                if (!$service) {
-                    $errors[] = "Booking #{$index}: Service not found or inactive";
+                if (!isset($services[$serviceId])) {
+                    $errors[] = "Booking #{$index}: Service not found";
                     continue;
                 }
 
-                $config = $service->configuration;
-                if (!$config) {
-                    $errors[] = "Booking #{$index}: Service configuration not found";
-                    continue;
-                }
+                $service = $services[$serviceId]['service'];
+                $config = $services[$serviceId]['config'];
 
                 // Validate date for this service
                 if (!$this->isDateValidForBooking($date, $config)) {
@@ -78,10 +127,10 @@ class BookingService
                     continue;
                 }
 
-                // Validate duration matches configuration for this service
-                $actualDuration = $startTime->diffInMinutes($endTime);
-                if ($actualDuration != $config->duration_minutes) {
-                    $errors[] = "Booking #{$index}: Appointment duration must be {$config->duration_minutes} minutes";
+                // Check that this service can fit in the slot (start_time + service_duration <= end_time)
+                $serviceEndTime = $startTime->copy()->addMinutes($config->duration_minutes);
+                if ($serviceEndTime->gt($endTime)) {
+                    $errors[] = "Booking #{$index}: Service duration ({$config->duration_minutes} minutes) exceeds available slot duration";
                     continue;
                 }
 
