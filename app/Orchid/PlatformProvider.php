@@ -66,6 +66,11 @@ class PlatformProvider extends OrchidServiceProvider
                 ->route('platform.example.cards')
                 ->divider(),
 
+            Menu::make('Записи на прием')
+                ->icon('bs.calendar')
+                ->route('platform.systems.appointment-list-screen')
+                ->title('Бронирование'),
+
             Menu::make(__('Users'))
                 ->icon('bs.people')
                 ->route('platform.systems.users')
