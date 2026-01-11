@@ -173,12 +173,12 @@ class ServiceEditScreen extends Screen
                             Input::make("schedules.{$day}.start_time")
                                 ->type('time')
                                 ->title('Start Time')
-                                ->canSee(fn ($data) => $data["schedules.{$day}.is_available"] ?? false),
+                                ->help('Set start time if this day is available'),
 
                             Input::make("schedules.{$day}.end_time")
                                 ->type('time')
                                 ->title('End Time')
-                                ->canSee(fn ($data) => $data["schedules.{$day}.is_available"] ?? false),
+                                ->help('Set end time if this day is available'),
                         ]);
                     }, array_keys($dayNames)),
                 ]),
