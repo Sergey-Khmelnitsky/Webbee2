@@ -434,6 +434,8 @@
             // Get services array from serviceData
             const services = serviceData.services || [];
             
+            let participantIndex = 0;
+            
             if (services.length === 0) {
                 // Fallback: if services array is not available, use service_ids
                 const serviceIds = serviceData.service_ids || [];
@@ -445,22 +447,23 @@
                 // Create forms based on counts (we don't have service names here)
                 Object.entries(serviceCounts).forEach(([serviceId, count]) => {
                     for (let i = 0; i < count; i++) {
-                        createParticipantForm(formsContainer, serviceId, `Service ${serviceId}`, i + 1, count);
+                        createParticipantForm(formsContainer, serviceId, `Service ${serviceId}`, i + 1, count, participantIndex++);
                     }
                 });
             } else {
                 // Create forms for each service with count
                 services.forEach(service => {
                     for (let i = 0; i < service.count; i++) {
-                        createParticipantForm(formsContainer, service.id, service.name, i + 1, service.count);
+                        createParticipantForm(formsContainer, service.id, service.name, i + 1, service.count, participantIndex++);
                     }
                 });
             }
         }
 
-        function createParticipantForm(container, serviceId, serviceName, index, total) {
+        function createParticipantForm(container, serviceId, serviceName, index, total, participantIndex) {
             const formDiv = document.createElement('div');
             formDiv.className = 'border border-gray-200 rounded-lg p-4 bg-gray-50';
+            formDiv.dataset.participantIndex = participantIndex;
             
             const title = document.createElement('h4');
             title.className = 'text-md font-semibold text-gray-900 mb-4';
@@ -473,7 +476,7 @@
 
             const serviceIdInput = document.createElement('input');
             serviceIdInput.type = 'hidden';
-            serviceIdInput.name = 'participants[][service_id]';
+            serviceIdInput.name = `participants[${participantIndex}][service_id]`;
             serviceIdInput.value = serviceId;
             formDiv.appendChild(serviceIdInput);
 
@@ -485,7 +488,7 @@
             firstNameLabel.innerHTML = 'First Name <span class="text-red-500">*</span>';
             const firstNameInput = document.createElement('input');
             firstNameInput.type = 'text';
-            firstNameInput.name = 'participants[][first_name]';
+            firstNameInput.name = `participants[${participantIndex}][first_name]`;
             firstNameInput.required = true;
             firstNameInput.className = 'w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
             firstNameDiv.appendChild(firstNameLabel);
@@ -500,7 +503,7 @@
             lastNameLabel.innerHTML = 'Last Name <span class="text-red-500">*</span>';
             const lastNameInput = document.createElement('input');
             lastNameInput.type = 'text';
-            lastNameInput.name = 'participants[][last_name]';
+            lastNameInput.name = `participants[${participantIndex}][last_name]`;
             lastNameInput.required = true;
             lastNameInput.className = 'w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
             lastNameDiv.appendChild(lastNameLabel);
@@ -515,7 +518,7 @@
             emailLabel.innerHTML = 'Email <span class="text-red-500">*</span>';
             const emailInput = document.createElement('input');
             emailInput.type = 'email';
-            emailInput.name = 'participants[][email]';
+            emailInput.name = `participants[${participantIndex}][email]`;
             emailInput.required = true;
             emailInput.className = 'w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
             emailDiv.appendChild(emailLabel);
