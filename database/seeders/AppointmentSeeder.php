@@ -24,6 +24,9 @@ class AppointmentSeeder extends Seeder
             return;
         }
 
+        $participants = ParticipantSeeder::getParticipants();
+        $participantIndex = 0;
+
         // Generate appointments for the next 7 days
         $today = Carbon::today();
         for ($i = 0; $i < 7; $i++) {
@@ -40,25 +43,34 @@ class AppointmentSeeder extends Seeder
             }
 
             // Generate appointments for Men Haircut
-            $this->generateAppointmentsForService($menHaircut, $date, [
-                ['first_name' => 'John', 'last_name' => 'Doe', 'email' => 'john.doe@example.com'],
-                ['first_name' => 'Jane', 'last_name' => 'Smith', 'email' => 'jane.smith@example.com'],
-                ['first_name' => 'Bob', 'last_name' => 'Johnson', 'email' => 'bob.johnson@example.com'],
-            ]);
+            $participantIndex = $this->generateAppointmentsForService(
+                $menHaircut, 
+                $date, 
+                $participants, 
+                $participantIndex
+            );
 
             // Generate appointments for Women Haircut
-            $this->generateAppointmentsForService($womenHaircut, $date, [
-                ['first_name' => 'Alice', 'last_name' => 'Williams', 'email' => 'alice.williams@example.com'],
-                ['first_name' => 'Emma', 'last_name' => 'Brown', 'email' => 'emma.brown@example.com'],
-            ]);
+            $participantIndex = $this->generateAppointmentsForService(
+                $womenHaircut, 
+                $date, 
+                $participants, 
+                $participantIndex
+            );
         }
+
+        $this->command->info('Created ' . Appointment::count() . ' appointments with ' . AppointmentParticipant::count() . ' participants');
     }
 
-    private function generateAppointmentsForService(Service $service, Carbon $date, array $participantsPool): void
-    {
+    private function generateAppointmentsForService(
+        Service $service, 
+        Carbon $date, 
+        array $participantsPool, 
+        int $participantIndex
+    ): int {
         $config = $service->configuration;
         if (!$config) {
-            return;
+            return $participantIndex;
         }
 
         // Get schedule for the day
@@ -69,7 +81,7 @@ class AppointmentSeeder extends Seeder
             ->first();
 
         if (!$schedule) {
-            return;
+            return $participantIndex;
         }
 
         // Parse schedule times
@@ -88,12 +100,8 @@ class AppointmentSeeder extends Seeder
             ->get();
 
         // Generate valid time slots
-        $validSlots = $this->generateValidSlots($workStart, $workEnd, $breaks, $config);
-
-        // Create appointments (not more than max_concurrent_clients per slot)
         $slotInterval = $config->duration_minutes + $config->break_between_minutes;
         $currentTime = $workStart->copy();
-        $participantIndex = 0;
 
         while ($currentTime->copy()->addMinutes($config->duration_minutes)->lte($workEnd)) {
             $slotStart = $currentTime->copy();
@@ -105,8 +113,8 @@ class AppointmentSeeder extends Seeder
                 continue;
             }
 
-            // Randomly decide if we create an appointment for this slot (30% chance)
-            if (rand(1, 100) <= 30) {
+            // Randomly decide if we create an appointment for this slot (25% chance)
+            if (rand(1, 100) <= 25) {
                 // Random number of participants (1 to min(3, available in pool))
                 $numParticipants = rand(1, min(3, count($participantsPool)));
                 
@@ -145,6 +153,8 @@ class AppointmentSeeder extends Seeder
 
             $currentTime->addMinutes($slotInterval);
         }
+
+        return $participantIndex;
     }
 
     private function normalizeTimeString(string $timeStr): string
@@ -153,40 +163,6 @@ class AppointmentSeeder extends Seeder
             return substr($timeStr, 0, 5);
         }
         return $timeStr;
-    }
-
-    private function generateValidSlots(Carbon $workStart, Carbon $workEnd, $breaks, $config): array
-    {
-        $validSlots = [];
-        $slotInterval = $config->duration_minutes + $config->break_between_minutes;
-        $currentTime = $workStart->copy();
-
-        while ($currentTime->copy()->addMinutes($config->duration_minutes)->lte($workEnd)) {
-            $slotStart = $currentTime->copy();
-            $slotEnd = $currentTime->copy()->addMinutes($config->duration_minutes);
-
-            // Check if slot is in a break
-            $isInBreak = false;
-            foreach ($breaks as $break) {
-                $breakStart = Carbon::parse($slotStart->format('Y-m-d') . ' ' . $this->normalizeTimeString($break->start_time));
-                $breakEnd = Carbon::parse($slotStart->format('Y-m-d') . ' ' . $this->normalizeTimeString($break->end_time));
-                if ($slotStart->lt($breakEnd) && $slotEnd->gt($breakStart)) {
-                    $isInBreak = true;
-                    break;
-                }
-            }
-
-            if (!$isInBreak) {
-                $validSlots[] = [
-                    'start' => $slotStart,
-                    'end' => $slotEnd,
-                ];
-            }
-
-            $currentTime->addMinutes($slotInterval);
-        }
-
-        return $validSlots;
     }
 
     private function isSlotValid(Carbon $slotStart, Carbon $slotEnd, $breaks, Service $service, Carbon $date): bool
