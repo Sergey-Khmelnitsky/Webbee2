@@ -115,19 +115,17 @@ class AppointmentSeeder extends Seeder
 
             // Randomly decide if we create an appointment for this slot (25% chance)
             if (rand(1, 100) <= 25) {
-                // Random number of participants (1 to min(3, available in pool))
-                $numParticipants = rand(1, min(3, count($participantsPool)));
+                // Each appointment has exactly 1 participant
+                $numParticipants = 1;
                 
                 // Check existing appointments for this slot
                 $existingCount = Appointment::where('service_id', $service->id)
                     ->where('start_time', $slotStart)
                     ->whereNull('deleted_at')
-                    ->withCount('participants')
-                    ->get()
-                    ->sum('participants_count');
+                    ->count();
 
                 // Only create if we don't exceed max_concurrent_clients
-                if ($existingCount + $numParticipants <= $config->max_concurrent_clients) {
+                if ($existingCount < $config->max_concurrent_clients) {
                     $appointment = Appointment::create([
                         'service_id' => $service->id,
                         'created_by_user_id' => null, // Client booking
@@ -137,17 +135,15 @@ class AppointmentSeeder extends Seeder
                         'notes' => null,
                     ]);
 
-                    // Create participants
-                    for ($i = 0; $i < $numParticipants; $i++) {
-                        $participant = $participantsPool[$participantIndex % count($participantsPool)];
-                        AppointmentParticipant::create([
-                            'appointment_id' => $appointment->id,
-                            'first_name' => $participant['first_name'],
-                            'last_name' => $participant['last_name'],
-                            'email' => $participant['email'],
-                        ]);
-                        $participantIndex++;
-                    }
+                    // Create 1 participant for this appointment
+                    $participant = $participantsPool[$participantIndex % count($participantsPool)];
+                    AppointmentParticipant::create([
+                        'appointment_id' => $appointment->id,
+                        'first_name' => $participant['first_name'],
+                        'last_name' => $participant['last_name'],
+                        'email' => $participant['email'],
+                    ]);
+                    $participantIndex++;
                 }
             }
 
