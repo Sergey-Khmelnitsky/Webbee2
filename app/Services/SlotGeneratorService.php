@@ -585,6 +585,27 @@ class SlotGeneratorService
         }
 
         // Convert periods to time ranges for easier comparison
+        $allRanges = $this->convertPeriodsToRanges($servicePeriods, $date);
+
+        // Find intersection of all ranges
+        $commonRanges = $this->findIntersectionOfRanges($allRanges);
+
+        // Generate slots from common ranges
+        $commonPeriods = $this->generateSlotsFromRanges($commonRanges, $serviceConfigs);
+
+        // Merge overlapping periods
+        return $this->mergePeriods($commonPeriods);
+    }
+
+    /**
+     * Convert periods to time ranges for easier comparison
+     * 
+     * @param array $servicePeriods Array of [service_id => [periods]]
+     * @param Carbon $date
+     * @return array Array of [service_id => [ranges]]
+     */
+    private function convertPeriodsToRanges(array $servicePeriods, Carbon $date): array
+    {
         $allRanges = [];
         foreach ($servicePeriods as $serviceId => $periods) {
             $ranges = [];
@@ -595,71 +616,148 @@ class SlotGeneratorService
             }
             $allRanges[$serviceId] = $ranges;
         }
+        return $allRanges;
+    }
 
-        // Find intersection of all ranges
+    /**
+     * Find intersection of time ranges across all services
+     * 
+     * @param array $allRanges Array of [service_id => [ranges]]
+     * @return array Common ranges that intersect across all services
+     */
+    private function findIntersectionOfRanges(array $allRanges): array
+    {
+        if (empty($allRanges)) {
+            return [];
+        }
+
         $commonRanges = [];
         $firstServiceRanges = array_shift($allRanges);
 
         foreach ($firstServiceRanges as $range) {
-            $intersectionStart = $range['start'];
-            $intersectionEnd = $range['end'];
-
-            // Check if this range intersects with all other services
-            $isCommon = true;
-            foreach ($allRanges as $otherRanges) {
-                $foundIntersection = false;
-                foreach ($otherRanges as $otherRange) {
-                    // Check if ranges overlap
-                    if ($intersectionStart->lt($otherRange['end']) && $intersectionEnd->gt($otherRange['start'])) {
-                        // Calculate actual intersection
-                        $actualStart = $intersectionStart->gt($otherRange['start']) ? $intersectionStart : $otherRange['start'];
-                        $actualEnd = $intersectionEnd->lt($otherRange['end']) ? $intersectionEnd : $otherRange['end'];
-                        
-                        if ($actualStart->lt($actualEnd)) {
-                            $intersectionStart = $actualStart;
-                            $intersectionEnd = $actualEnd;
-                            $foundIntersection = true;
-                            break;
-                        }
-                    }
-                }
-                if (!$foundIntersection) {
-                    $isCommon = false;
-                    break;
-                }
-            }
-
-            if ($isCommon && $intersectionStart->lt($intersectionEnd)) {
-                $commonRanges[] = [
-                    'start' => $intersectionStart,
-                    'end' => $intersectionEnd,
-                ];
+            $intersection = $this->findRangeIntersection($range, $allRanges);
+            if ($intersection !== null) {
+                $commonRanges[] = $intersection;
             }
         }
 
-        // Convert back to period format
+        return $commonRanges;
+    }
+
+    /**
+     * Find intersection of a range with all other service ranges
+     * 
+     * @param array $range ['start' => Carbon, 'end' => Carbon]
+     * @param array $allRanges Array of [service_id => [ranges]]
+     * @return array|null Intersection range or null if no intersection
+     */
+    private function findRangeIntersection(array $range, array $allRanges): ?array
+    {
+        $intersectionStart = $range['start'];
+        $intersectionEnd = $range['end'];
+
+        // Check if this range intersects with all other services
+        foreach ($allRanges as $otherRanges) {
+            $intersection = $this->findIntersectionWithRanges($intersectionStart, $intersectionEnd, $otherRanges);
+            if ($intersection === null) {
+                return null; // No intersection with this service
+            }
+            
+            $intersectionStart = $intersection['start'];
+            $intersectionEnd = $intersection['end'];
+        }
+
+        if ($intersectionStart->lt($intersectionEnd)) {
+            return [
+                'start' => $intersectionStart,
+                'end' => $intersectionEnd,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Find intersection of a time range with a list of ranges
+     * 
+     * @param Carbon $start Start time
+     * @param Carbon $end End time
+     * @param array $ranges Array of ['start' => Carbon, 'end' => Carbon]
+     * @return array|null Intersection range or null if no intersection
+     */
+    private function findIntersectionWithRanges(Carbon $start, Carbon $end, array $ranges): ?array
+    {
+        foreach ($ranges as $otherRange) {
+            // Check if ranges overlap
+            if ($start->lt($otherRange['end']) && $end->gt($otherRange['start'])) {
+                // Calculate actual intersection
+                $actualStart = $start->gt($otherRange['start']) ? $start : $otherRange['start'];
+                $actualEnd = $end->lt($otherRange['end']) ? $end : $otherRange['end'];
+                
+                if ($actualStart->lt($actualEnd)) {
+                    return [
+                        'start' => $actualStart,
+                        'end' => $actualEnd,
+                    ];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Generate time slots from common ranges
+     * 
+     * @param array $commonRanges Array of ['start' => Carbon, 'end' => Carbon]
+     * @param array $serviceConfigs Array of [service_id => [service, config]]
+     * @return array Array of periods with start_time and end_time
+     */
+    private function generateSlotsFromRanges(array $commonRanges, array $serviceConfigs): array
+    {
+        if (empty($commonRanges)) {
+            return [];
+        }
+
+        // Find minimum duration and break_between from all services
+        $minDuration = min(array_map(fn($sc) => $sc['config']->duration_minutes, $serviceConfigs));
+        $minBreak = min(array_map(fn($sc) => $sc['config']->break_between_minutes, $serviceConfigs));
+
         $commonPeriods = [];
         foreach ($commonRanges as $range) {
-            // Find minimum duration and break_between from all services
-            $minDuration = min(array_map(fn($sc) => $sc['config']->duration_minutes, $serviceConfigs));
-            $minBreak = min(array_map(fn($sc) => $sc['config']->break_between_minutes, $serviceConfigs));
-
-            // Generate slots within common period using minimum duration
-            $currentStart = $range['start']->copy();
-            while ($currentStart->copy()->addMinutes($minDuration)->lte($range['end'])) {
-                $slotEnd = $currentStart->copy()->addMinutes($minDuration);
-                
-                $commonPeriods[] = [
-                    'start_time' => $currentStart->format('H:i'),
-                    'end_time' => $slotEnd->format('H:i'),
-                ];
-
-                $currentStart->addMinutes($minDuration + $minBreak);
-            }
+            $slots = $this->generateSlotsInRange($range, $minDuration, $minBreak);
+            $commonPeriods = array_merge($commonPeriods, $slots);
         }
 
-        // Merge overlapping periods
-        return $this->mergePeriods($commonPeriods);
+        return $commonPeriods;
+    }
+
+    /**
+     * Generate time slots within a time range
+     * 
+     * @param array $range ['start' => Carbon, 'end' => Carbon]
+     * @param int $durationMinutes Slot duration in minutes
+     * @param int $breakMinutes Break between slots in minutes
+     * @return array Array of periods with start_time and end_time
+     */
+    private function generateSlotsInRange(array $range, int $durationMinutes, int $breakMinutes): array
+    {
+        $slots = [];
+        $currentStart = $range['start']->copy();
+        $slotInterval = $durationMinutes + $breakMinutes;
+
+        while ($currentStart->copy()->addMinutes($durationMinutes)->lte($range['end'])) {
+            $slotEnd = $currentStart->copy()->addMinutes($durationMinutes);
+            
+            $slots[] = [
+                'start_time' => $currentStart->format('H:i'),
+                'end_time' => $slotEnd->format('H:i'),
+            ];
+
+            $currentStart->addMinutes($slotInterval);
+        }
+
+        return $slots;
     }
 
     /**
