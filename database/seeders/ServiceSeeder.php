@@ -27,7 +27,7 @@ class ServiceSeeder extends Seeder
             [
                 'name' => 'Hair Colouring',
                 'description' => 'Professional hair colouring service',
-                'is_active' => true,
+                'is_active' => false,
             ],
         ];
 
