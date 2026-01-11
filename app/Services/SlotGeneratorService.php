@@ -463,34 +463,45 @@ class SlotGeneratorService
      * Returns slots that are available for ALL specified services simultaneously
      * 
      * @param string $date Date in Y-m-d format
-     * @param array $serviceIds Array of service IDs
+     * @param array $serviceIds Array of service IDs (may contain duplicates)
      * @return array Combined calendar data with common slots
      */
     public function getCommonSlotsForServices(string $date, array $serviceIds): array
     {
         $targetDate = Carbon::parse($date);
         
+        // Count occurrences of each service ID
+        $serviceCounts = array_count_values($serviceIds);
+        $uniqueServiceIds = array_unique($serviceIds);
+        
         \Log::info('getCommonSlotsForServices called', [
             'date' => $date,
             'service_ids' => $serviceIds,
+            'service_counts' => $serviceCounts,
             'target_date' => $targetDate->format('Y-m-d'),
         ]);
 
         // Load all services with relations
         $services = Service::with(['configuration', 'schedules', 'breaks', 'holidays'])
-            ->whereIn('id', $serviceIds)
+            ->whereIn('id', $uniqueServiceIds)
             ->where('is_active', true)
-            ->get();
+            ->get()
+            ->keyBy('id');
 
         if ($services->isEmpty()) {
             return [];
         }
 
-        // Get available periods for each service
+        // Get available periods for each service instance (considering duplicates)
         $servicePeriods = [];
         $serviceConfigs = [];
         
-        foreach ($services as $service) {
+        foreach ($serviceIds as $serviceId) {
+            if (!isset($services[$serviceId])) {
+                continue;
+            }
+
+            $service = $services[$serviceId];
             $config = $service->configuration;
             if (!$config) {
                 continue;
@@ -510,10 +521,12 @@ class SlotGeneratorService
 
             $periods = $this->generateAvailableSlots($service, $targetDate);
             if (!empty($periods)) {
-                $servicePeriods[$service->id] = $periods;
-                $serviceConfigs[$service->id] = [
+                // Use service ID as key, but we'll process each instance separately
+                $servicePeriods[] = $periods;
+                $serviceConfigs[] = [
                     'service' => $service,
                     'config' => $config,
+                    'service_id' => $serviceId,
                 ];
             }
         }
@@ -522,37 +535,49 @@ class SlotGeneratorService
             return [];
         }
 
-        // Find intersection of all periods
-        $commonPeriods = $this->findCommonPeriods($servicePeriods, $serviceConfigs, $targetDate);
+        // Find intersection of all periods (including duplicates)
+        $commonPeriods = $this->findCommonPeriodsForInstances($servicePeriods, $serviceConfigs, $targetDate);
 
         // Return single result with common slots for all services
         if (empty($commonPeriods)) {
             return [];
         }
 
-        // Get combined service info
-        $serviceNames = array_map(fn($sd) => $sd['service']->name, $serviceConfigs);
-        $serviceIds = array_keys($serviceConfigs);
-        
+        // Build service info with counts
+        $serviceInfo = [];
+        foreach ($serviceCounts as $serviceId => $count) {
+            if (isset($services[$serviceId])) {
+                $service = $services[$serviceId];
+                $serviceInfo[] = [
+                    'id' => $service->id,
+                    'name' => $service->name,
+                    'count' => $count,
+                ];
+            }
+        }
+
         // Use minimum duration and break for common slots
-        $minDuration = min(array_map(fn($sc) => $sc['config']->duration_minutes, $serviceConfigs));
-        $minBreak = min(array_map(fn($sc) => $sc['config']->break_between_minutes, $serviceConfigs));
-        $minMaxClients = min(array_map(fn($sc) => $sc['config']->max_concurrent_clients, $serviceConfigs));
-        $minAdvanceDays = min(array_map(fn($sc) => $sc['config']->booking_advance_days, $serviceConfigs));
+        $allConfigs = array_column($serviceConfigs, 'config');
+        $minDuration = min(array_map(fn($c) => $c->duration_minutes, $allConfigs));
+        $minBreak = min(array_map(fn($c) => $c->break_between_minutes, $allConfigs));
+        $minMaxClients = min(array_map(fn($c) => $c->max_concurrent_clients, $allConfigs));
+        $minAdvanceDays = min(array_map(fn($c) => $c->booking_advance_days, $allConfigs));
+
+        // Build name with counts
+        $serviceNames = array_map(function($info) {
+            if ($info['count'] > 1) {
+                return $info['name'] . ' (x' . $info['count'] . ')';
+            }
+            return $info['name'];
+        }, $serviceInfo);
 
         return [
             [
-                'id' => implode(',', $serviceIds), // Combined IDs
-                'name' => implode(' & ', $serviceNames), // Combined names
+                'id' => implode(',', $serviceIds), // All IDs including duplicates
+                'name' => implode(' & ', $serviceNames), // Combined names with counts
                 'description' => 'Common available slots for selected services',
-                'service_ids' => $serviceIds,
-                'services' => array_map(function($serviceId) use ($serviceConfigs) {
-                    $service = $serviceConfigs[$serviceId]['service'];
-                    return [
-                        'id' => $service->id,
-                        'name' => $service->name,
-                    ];
-                }, $serviceIds),
+                'service_ids' => $serviceIds, // All IDs including duplicates
+                'services' => $serviceInfo,
                 'configuration' => [
                     'duration_minutes' => $minDuration,
                     'break_between_minutes' => $minBreak,
@@ -568,6 +593,42 @@ class SlotGeneratorService
                 ],
             ],
         ];
+    }
+
+    /**
+     * Find common time periods across multiple service instances (including duplicates)
+     * 
+     * @param array $servicePeriods Array of [periods] for each service instance
+     * @param array $serviceConfigs Array of [service, config, service_id] for each instance
+     * @param Carbon $date
+     * @return array Common available periods
+     */
+    private function findCommonPeriodsForInstances(array $servicePeriods, array $serviceConfigs, Carbon $date): array
+    {
+        if (empty($servicePeriods)) {
+            return [];
+        }
+
+        // Convert periods to time ranges for easier comparison
+        $allRanges = [];
+        foreach ($servicePeriods as $periods) {
+            $ranges = [];
+            foreach ($periods as $period) {
+                $start = Carbon::parse($date->format('Y-m-d') . ' ' . $period['start_time']);
+                $end = Carbon::parse($date->format('Y-m-d') . ' ' . $period['end_time']);
+                $ranges[] = ['start' => $start, 'end' => $end];
+            }
+            $allRanges[] = $ranges;
+        }
+
+        // Find intersection of all ranges
+        $commonRanges = $this->findIntersectionOfRanges($allRanges);
+
+        // Generate slots from common ranges
+        $commonPeriods = $this->generateSlotsFromRanges($commonRanges, $serviceConfigs);
+
+        // Merge overlapping periods
+        return $this->mergePeriods($commonPeriods);
     }
 
     /**
