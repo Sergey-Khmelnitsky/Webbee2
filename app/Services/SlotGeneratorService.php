@@ -905,9 +905,11 @@ class SlotGeneratorService
                     break;
                 }
                 
-                // Count existing bookings for this service at this exact time slot
+                // Count existing bookings that overlap with this slot
+                // A booking overlaps if: booking.start < slot.end AND booking.end > slot.start
                 $existingBookings = Appointment::where('service_id', $serviceId)
-                    ->where('start_time', $slotStart)
+                    ->where('start_time', '<', $slotEnd)
+                    ->where('end_time', '>', $slotStart)
                     ->whereNull('deleted_at')
                     ->count();
                 
