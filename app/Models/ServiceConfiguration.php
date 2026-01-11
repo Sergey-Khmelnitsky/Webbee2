@@ -11,6 +11,7 @@ class ServiceConfiguration extends Model
         'service_id',
         'duration_minutes',
         'break_between_minutes',
+        'slot_interval_minutes',
         'max_concurrent_clients',
         'booking_advance_days',
     ];
@@ -20,6 +21,7 @@ class ServiceConfiguration extends Model
         return [
             'duration_minutes' => 'integer',
             'break_between_minutes' => 'integer',
+            'slot_interval_minutes' => 'integer',
             'max_concurrent_clients' => 'integer',
             'booking_advance_days' => 'integer',
         ];

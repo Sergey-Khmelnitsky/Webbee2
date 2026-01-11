@@ -41,6 +41,7 @@ class ServiceConfigurationSeeder extends Seeder
             [
                 'duration_minutes' => 30, // appointment duration
                 'break_between_minutes' => 5,
+                'slot_interval_minutes' => 10, // slots every 10 minutes
                 'max_concurrent_clients' => 3,
                 'booking_advance_days' => 7,
             ]

@@ -317,14 +317,12 @@ class BookingService
         }
 
         // Check if slot time aligns with slot intervals
-        // Slot should start at valid intervals: workStart + n * (duration + break_between)
-        // However, when multiple services are selected, slots are generated using max duration
-        // So we need to be more flexible - check if the slot can fit within the schedule
-        $slotInterval = $config->duration_minutes + $config->break_between_minutes;
+        // Slot should start at valid intervals: workStart + n * slot_interval
+        // Use slot_interval_minutes if set, otherwise fallback to duration + break_between
+        $slotInterval = $config->slot_interval_minutes ?? ($config->duration_minutes + $config->break_between_minutes);
         $minutesFromStart = $workStart->diffInMinutes($startTime);
         
-        // Allow slots that are at valid intervals OR can accommodate the service duration
-        // This handles cases where multiple services with different intervals are selected
+        // Check if slot starts at a valid interval
         $isAtValidInterval = ($minutesFromStart % $slotInterval === 0);
         
         // Also check if there's enough time from this start to fit the service duration

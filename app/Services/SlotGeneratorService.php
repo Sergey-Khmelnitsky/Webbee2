@@ -219,7 +219,7 @@ class SlotGeneratorService
         
         // Add fully booked periods (when max_concurrent_clients is reached)
         $currentTime = $workStart->copy();
-        $slotInterval = $config->duration_minutes + $config->break_between_minutes;
+        $slotInterval = $this->getSlotInterval($config);
 
         while ($currentTime->copy()->addMinutes($config->duration_minutes)->lte($workEnd)) {
             $slotStart = $currentTime->copy();
@@ -661,13 +661,16 @@ class SlotGeneratorService
         }
 
         // Use maximum duration (longest service) to ensure all services can fit
-        // Use minimum break_between from all services
+        // Use minimum slot_interval_minutes from all services, or fallback to duration + break
         $maxDuration = max(array_map(fn($sc) => $sc['config']->duration_minutes, $serviceConfigs));
-        $minBreak = min(array_map(fn($sc) => $sc['config']->break_between_minutes, $serviceConfigs));
+        
+        // Calculate slot intervals for all services
+        $slotIntervals = array_map(fn($sc) => $this->getSlotInterval($sc['config']), $serviceConfigs);
+        $minSlotInterval = min($slotIntervals);
 
         $commonPeriods = [];
         foreach ($commonRanges as $range) {
-            $slots = $this->generateSlotsInRange($range, $maxDuration, $minBreak);
+            $slots = $this->generateSlotsInRange($range, $maxDuration, $minSlotInterval);
             $commonPeriods = array_merge($commonPeriods, $slots);
         }
 
@@ -679,14 +682,13 @@ class SlotGeneratorService
      * 
      * @param array $range ['start' => Carbon, 'end' => Carbon]
      * @param int $durationMinutes Slot duration in minutes
-     * @param int $breakMinutes Break between slots in minutes
+     * @param int $slotIntervalMinutes Interval between slot start times in minutes
      * @return array Array of periods with start_time and end_time
      */
-    private function generateSlotsInRange(array $range, int $durationMinutes, int $breakMinutes): array
+    private function generateSlotsInRange(array $range, int $durationMinutes, int $slotIntervalMinutes): array
     {
         $slots = [];
         $currentStart = $range['start']->copy();
-        $slotInterval = $durationMinutes + $breakMinutes;
 
         while ($currentStart->copy()->addMinutes($durationMinutes)->lte($range['end'])) {
             $slotEnd = $currentStart->copy()->addMinutes($durationMinutes);
@@ -696,7 +698,7 @@ class SlotGeneratorService
                 'end_time' => $slotEnd->format('H:i'),
             ];
 
-            $currentStart->addMinutes($slotInterval);
+            $currentStart->addMinutes($slotIntervalMinutes);
         }
 
         return $slots;
@@ -761,9 +763,9 @@ class SlotGeneratorService
             $periodStart = Carbon::parse($date->format('Y-m-d') . ' ' . $period['start_time']);
             $periodEnd = Carbon::parse($date->format('Y-m-d') . ' ' . $period['end_time']);
             
-            // Find maximum duration (longest service) and minimum break from all services to generate slots
+            // Find maximum duration (longest service) and minimum slot interval from all services
             $maxDuration = null;
-            $minBreak = null;
+            $slotIntervals = [];
             foreach ($serviceCounts as $serviceId => $count) {
                 if (isset($services[$serviceId])) {
                     $config = $services[$serviceId]->configuration;
@@ -771,19 +773,19 @@ class SlotGeneratorService
                         if ($maxDuration === null || $config->duration_minutes > $maxDuration) {
                             $maxDuration = $config->duration_minutes;
                         }
-                        if ($minBreak === null || $config->break_between_minutes < $minBreak) {
-                            $minBreak = $config->break_between_minutes;
-                        }
+                        $slotIntervals[] = $this->getSlotInterval($config);
                     }
                 }
             }
             
-            if ($maxDuration === null || $minBreak === null) {
+            if ($maxDuration === null || empty($slotIntervals)) {
                 continue;
             }
             
+            // Use minimum slot interval from all services
+            $minSlotInterval = min($slotIntervals);
+            
             // Generate all possible slots in this period using maximum duration
-            $slotInterval = $maxDuration + $minBreak;
             $currentSlotStart = $periodStart->copy();
             $hasAvailableSlot = false;
             
@@ -827,7 +829,7 @@ class SlotGeneratorService
                     break; // At least one slot in this period has capacity
                 }
                 
-                $currentSlotStart->addMinutes($slotInterval);
+                $currentSlotStart->addMinutes($minSlotInterval);
             }
             
             // Only include period if it has at least one available slot
@@ -837,5 +839,21 @@ class SlotGeneratorService
         }
         
         return $filtered;
+    }
+
+    /**
+     * Get slot interval for a service configuration
+     * Uses slot_interval_minutes if set, otherwise falls back to duration_minutes + break_between_minutes
+     * 
+     * @param $config ServiceConfiguration
+     * @return int Slot interval in minutes
+     */
+    private function getSlotInterval($config): int
+    {
+        if ($config->slot_interval_minutes !== null) {
+            return $config->slot_interval_minutes;
+        }
+        
+        return $config->duration_minutes + $config->break_between_minutes;
     }
 }

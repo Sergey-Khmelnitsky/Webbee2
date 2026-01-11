@@ -150,6 +150,11 @@ class ServiceEditScreen extends Screen
                         ->required()
                         ->help('Time needed between appointments for cleanup'),
 
+                    Input::make('configuration.slot_interval_minutes')
+                        ->title('Slot Interval (minutes)')
+                        ->type('number')
+                        ->help('Interval between slot start times (e.g., 10 for slots every 10 minutes). If empty, uses duration + break between'),
+
                     Input::make('configuration.max_concurrent_clients')
                         ->title('Max Concurrent Clients')
                         ->type('number')
