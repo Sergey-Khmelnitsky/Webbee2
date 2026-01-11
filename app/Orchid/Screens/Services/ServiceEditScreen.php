@@ -164,8 +164,8 @@ class ServiceEditScreen extends Screen
                 ]),
 
                 'Schedules' => Layout::rows([
-                    ...array_map(function ($day) use ($dayNames) {
-                        return Layout::rows([
+                    ...array_reduce(array_keys($dayNames), function ($carry, $day) use ($dayNames) {
+                        return array_merge($carry, [
                             Switcher::make("schedules.{$day}.is_available")
                                 ->title($dayNames[$day])
                                 ->sendTrueOrFalse(),
@@ -180,7 +180,7 @@ class ServiceEditScreen extends Screen
                                 ->title('End Time')
                                 ->help('Set end time if this day is available'),
                         ]);
-                    }, array_keys($dayNames)),
+                    }, []),
                 ]),
 
                 'Breaks' => Layout::rows([
