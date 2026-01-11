@@ -561,55 +561,6 @@ class SlotGeneratorService
     }
 
     /**
-     * Find common time periods across multiple services
-     * 
-     * @param array $servicePeriods Array of [service_id => [periods]]
-     * @param array $serviceConfigs Array of [service_id => [service, config]]
-     * @param Carbon $date
-     * @return array Common available periods
-     */
-    private function findCommonPeriods(array $servicePeriods, array $serviceConfigs, Carbon $date): array
-    {
-        if (empty($servicePeriods)) {
-            return [];
-        }
-
-        // Convert periods to time ranges for easier comparison
-        $allRanges = $this->convertPeriodsToRanges($servicePeriods, $date);
-
-        // Find intersection of all ranges
-        $commonRanges = $this->findIntersectionOfRanges($allRanges);
-
-        // Generate slots from common ranges
-        $commonPeriods = $this->generateSlotsFromRanges($commonRanges, $serviceConfigs);
-
-        // Merge overlapping periods
-        return $this->mergePeriods($commonPeriods);
-    }
-
-    /**
-     * Convert periods to time ranges for easier comparison
-     * 
-     * @param array $servicePeriods Array of [service_id => [periods]]
-     * @param Carbon $date
-     * @return array Array of [service_id => [ranges]]
-     */
-    private function convertPeriodsToRanges(array $servicePeriods, Carbon $date): array
-    {
-        $allRanges = [];
-        foreach ($servicePeriods as $serviceId => $periods) {
-            $ranges = [];
-            foreach ($periods as $period) {
-                $start = Carbon::parse($date->format('Y-m-d') . ' ' . $period['start_time']);
-                $end = Carbon::parse($date->format('Y-m-d') . ' ' . $period['end_time']);
-                $ranges[] = ['start' => $start, 'end' => $end];
-            }
-            $allRanges[$serviceId] = $ranges;
-        }
-        return $allRanges;
-    }
-
-    /**
      * Find intersection of time ranges across all services
      * 
      * @param array $allRanges Array of [service_id => [ranges]]
