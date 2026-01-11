@@ -233,6 +233,13 @@ class SlotGeneratorService
                     'start' => $slotStart,
                     'end' => $slotEnd,
                 ];
+                
+                \Log::info('Fully booked slot added to blocked periods', [
+                    'slot_start' => $slotStart->format('H:i'),
+                    'slot_end' => $slotEnd->format('H:i'),
+                    'booked_count' => $bookedCount,
+                    'max_concurrent_clients' => $config->max_concurrent_clients,
+                ]);
             }
 
             $currentTime->addMinutes($slotInterval);
@@ -316,13 +323,29 @@ class SlotGeneratorService
         } else {
             foreach ($mergedBlocked as $blocked) {
                 if ($currentStart->lt($blocked['start'])) {
-                    // end_time should be blocked start (last possible end time before block)
-                    // but we need to ensure there's at least one slot possible
+                    // end_time should be the last possible end time for a slot that starts before the block
+                    // Find the last slot that can start before blocked start, considering slot_interval
+                    $slotInterval = $this->getSlotInterval($config);
+                    $minutesFromStart = $currentStart->diffInMinutes($blocked['start']);
+                    
+                    // Find how many full slot intervals fit before the block
+                    $maxSlots = floor($minutesFromStart / $slotInterval);
+                    
+                    // Calculate the last possible slot start time
+                    $lastSlotStart = $currentStart->copy()->addMinutes($maxSlots * $slotInterval);
+                    
+                    // Calculate the last possible end time (last slot start + duration)
+                    $lastSlotEnd = $lastSlotStart->copy()->addMinutes($config->duration_minutes);
+                    
+                    // Ensure we can fit at least one slot
                     $earliestEnd = $currentStart->copy()->addMinutes($config->duration_minutes);
                     if ($earliestEnd->lte($blocked['start'])) {
+                        // end_time is the last possible end time, but must not exceed blocked start
+                        $periodEnd = $lastSlotEnd->lte($blocked['start']) ? $lastSlotEnd : $blocked['start'];
+                        
                         $availablePeriods[] = [
                             'start_time' => $currentStart->format('H:i'),
-                            'end_time' => $blocked['start']->format('H:i'),
+                            'end_time' => $periodEnd->format('H:i'),
                         ];
                     }
                 }
