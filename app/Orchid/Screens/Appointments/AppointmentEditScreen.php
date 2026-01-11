@@ -74,7 +74,7 @@ class AppointmentEditScreen extends Screen
 
             Button::make('Save')
                 ->icon('bs.check-circle')
-                ->method('save'),
+                ->method($this->appointment->exists ? 'save' : 'create'),
         ];
     }
 
