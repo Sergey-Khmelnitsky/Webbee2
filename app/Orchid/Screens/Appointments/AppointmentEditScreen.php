@@ -25,14 +25,18 @@ class AppointmentEditScreen extends Screen
      *
      * @return array
      */
-    public function query(?Appointment $appointment = null): iterable
+    public function query(): iterable
     {
+        // Get appointment from route parameter if exists, otherwise create new
+        $appointment = request()->route('appointment');
+        
         if ($appointment === null) {
             $appointment = new Appointment();
+        } else {
+            $appointment->load(['service', 'participants']);
         }
 
         $this->appointment = $appointment;
-        $appointment->load(['service', 'participants']);
 
         return [
             'appointment' => $appointment,
