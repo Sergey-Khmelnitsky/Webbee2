@@ -305,4 +305,75 @@ class BookingService
         }
         return $time;
     }
+
+    /**
+     * Validate participant data
+     * 
+     * @param array $participantData
+     * @return array ['valid' => bool, 'message' => string]
+     */
+    private function validateParticipant(array $participantData): array
+    {
+        // Check required fields
+        $requiredFields = ['first_name', 'last_name', 'email'];
+        foreach ($requiredFields as $field) {
+            if (!isset($participantData[$field]) || empty(trim($participantData[$field]))) {
+                return [
+                    'valid' => false,
+                    'message' => ucfirst(str_replace('_', ' ', $field)) . ' is required for participant.',
+                ];
+            }
+        }
+
+        // Validate first name
+        $firstName = trim($participantData['first_name']);
+        if (strlen($firstName) < 1 || strlen($firstName) > 255) {
+            return [
+                'valid' => false,
+                'message' => 'First name must be between 1 and 255 characters.',
+            ];
+        }
+
+        // Validate last name
+        $lastName = trim($participantData['last_name']);
+        if (strlen($lastName) < 1 || strlen($lastName) > 255) {
+            return [
+                'valid' => false,
+                'message' => 'Last name must be between 1 and 255 characters.',
+            ];
+        }
+
+        // Validate email
+        $email = trim($participantData['email']);
+        if (strlen($email) > 255) {
+            return [
+                'valid' => false,
+                'message' => 'Email must not exceed 255 characters.',
+            ];
+        }
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return [
+                'valid' => false,
+                'message' => 'Please provide a valid email address.',
+            ];
+        }
+
+        // Check for suspicious patterns (basic XSS prevention)
+        $suspiciousPatterns = ['<script', 'javascript:', 'onerror=', 'onload='];
+        $allFields = $firstName . ' ' . $lastName . ' ' . $email;
+        foreach ($suspiciousPatterns as $pattern) {
+            if (stripos($allFields, $pattern) !== false) {
+                return [
+                    'valid' => false,
+                    'message' => 'Invalid characters detected in participant data.',
+                ];
+            }
+        }
+
+        return [
+            'valid' => true,
+            'message' => 'Participant data is valid',
+        ];
+    }
 }
