@@ -40,6 +40,11 @@ class PlatformProvider extends OrchidServiceProvider
                 ->route('platform.systems.appointments')
                 ->title('Booking'),
 
+            Menu::make('Services')
+                ->icon('bs.scissors')
+                ->route('platform.systems.services')
+                ->divider(),
+
             Menu::make(__('Users'))
                 ->icon('bs.people')
                 ->route('platform.systems.users')

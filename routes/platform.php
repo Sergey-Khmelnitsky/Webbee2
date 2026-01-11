@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Orchid\Screens\Appointments\AppointmentEditScreen;
 use App\Orchid\Screens\Appointments\AppointmentListScreen;
+use App\Orchid\Screens\ServiceEditScreen;
+use App\Orchid\Screens\ServiceListScreen;
 use App\Orchid\Screens\Examples\ExampleActionsScreen;
 use App\Orchid\Screens\Examples\ExampleCardsScreen;
 use App\Orchid\Screens\Examples\ExampleChartsScreen;
@@ -106,6 +108,27 @@ Route::screen('appointments', AppointmentListScreen::class)
     ->breadcrumbs(fn (Trail $trail) => $trail
         ->parent('platform.index')
         ->push('Appointments', route('platform.systems.appointments')));
+
+// Platform > System > Services > Service
+Route::screen('services/{service}/edit', ServiceEditScreen::class)
+    ->name('platform.systems.services.edit')
+    ->breadcrumbs(fn (Trail $trail, $service) => $trail
+        ->parent('platform.systems.services')
+        ->push('Edit Service', route('platform.systems.services.edit', $service)));
+
+// Platform > System > Services > Create
+Route::screen('services/create', ServiceEditScreen::class)
+    ->name('platform.systems.services.create')
+    ->breadcrumbs(fn (Trail $trail) => $trail
+        ->parent('platform.systems.services')
+        ->push('Create', route('platform.systems.services.create')));
+
+// Platform > System > Services
+Route::screen('services', ServiceListScreen::class)
+    ->name('platform.systems.services')
+    ->breadcrumbs(fn (Trail $trail) => $trail
+        ->parent('platform.index')
+        ->push('Services', route('platform.systems.services')));
 
 // Example...
 Route::screen('example', ExampleScreen::class)
