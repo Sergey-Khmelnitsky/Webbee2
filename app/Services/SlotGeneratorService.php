@@ -656,7 +656,7 @@ class SlotGeneratorService
         // Different services: convert slots to time ranges, find intersection, then generate common slots
         // This is needed because different services may have different durations and intervals
         $allRanges = [];
-        foreach ($serviceSlots as $slots) {
+        foreach ($serviceSlots as $index => $slots) {
             $ranges = [];
             foreach ($slots as $slot) {
                 $start = Carbon::parse($date->format('Y-m-d') . ' ' . $slot['start_time']);
@@ -664,21 +664,68 @@ class SlotGeneratorService
                 $ranges[] = ['start' => $start, 'end' => $end];
             }
             $allRanges[] = $ranges;
+            
+            \Log::info('Service slots converted to ranges', [
+                'service_index' => $index,
+                'service_id' => $serviceConfigs[$index]['service_id'],
+                'slots_count' => count($slots),
+                'ranges_count' => count($ranges),
+                'first_few_ranges' => array_slice(array_map(function($r) {
+                    return [
+                        'start' => $r['start']->format('H:i'),
+                        'end' => $r['end']->format('H:i'),
+                    ];
+                }, $ranges), 0, 5),
+            ]);
         }
 
         // Find intersection of all ranges
         $commonRanges = $this->findIntersectionOfRanges($allRanges);
+        
+        \Log::info('Common ranges found', [
+            'common_ranges_count' => count($commonRanges),
+            'first_few_ranges' => array_slice(array_map(function($r) {
+                return [
+                    'start' => $r['start']->format('H:i'),
+                    'end' => $r['end']->format('H:i'),
+                ];
+            }, $commonRanges), 0, 10),
+        ]);
 
-        // Generate slots from common ranges using maximum duration and minimum slot interval
+        // Merge overlapping ranges into larger periods
+        $mergedRanges = $this->mergeOverlappingRanges($commonRanges);
+        
+        \Log::info('Merged ranges', [
+            'merged_ranges_count' => count($mergedRanges),
+            'merged_ranges' => array_map(function($r) {
+                return [
+                    'start' => $r['start']->format('H:i'),
+                    'end' => $r['end']->format('H:i'),
+                ];
+            }, $mergedRanges),
+        ]);
+
+        // Generate slots from merged ranges using maximum duration and minimum slot interval
         $maxDuration = max(array_map(fn($sc) => $sc['config']->duration_minutes, $serviceConfigs));
         $slotIntervals = array_map(fn($sc) => $this->getSlotInterval($sc['config']), $serviceConfigs);
         $minSlotInterval = min($slotIntervals);
+        
+        \Log::info('Slot generation parameters', [
+            'max_duration' => $maxDuration,
+            'min_slot_interval' => $minSlotInterval,
+            'slot_intervals' => $slotIntervals,
+        ]);
 
         $commonSlots = [];
-        foreach ($commonRanges as $range) {
+        foreach ($mergedRanges as $range) {
             $slots = $this->generateSlotsInRange($range, $maxDuration, $minSlotInterval);
             $commonSlots = array_merge($commonSlots, $slots);
         }
+        
+        \Log::info('Common slots generated', [
+            'common_slots_count' => count($commonSlots),
+            'first_few_slots' => array_slice($commonSlots, 0, 5),
+        ]);
 
         return $commonSlots;
     }
@@ -825,6 +872,44 @@ class SlotGeneratorService
         }
 
         return $slots;
+    }
+
+    /**
+     * Merge overlapping or adjacent time ranges
+     * 
+     * @param array $ranges Array of ['start' => Carbon, 'end' => Carbon]
+     * @return array Merged ranges
+     */
+    private function mergeOverlappingRanges(array $ranges): array
+    {
+        if (empty($ranges)) {
+            return [];
+        }
+
+        // Sort by start time
+        usort($ranges, function ($a, $b) {
+            return $a['start']->lt($b['start']) ? -1 : 1;
+        });
+
+        $merged = [];
+        $current = $ranges[0];
+
+        for ($i = 1; $i < count($ranges); $i++) {
+            $next = $ranges[$i];
+            
+            // If ranges overlap or are adjacent, merge them
+            if ($current['end']->gte($next['start'])) {
+                // Merge: extend current range to include next
+                $current['end'] = $current['end']->gt($next['end']) ? $current['end'] : $next['end'];
+            } else {
+                // No overlap: save current and start new
+                $merged[] = $current;
+                $current = $next;
+            }
+        }
+
+        $merged[] = $current;
+        return $merged;
     }
 
     /**
