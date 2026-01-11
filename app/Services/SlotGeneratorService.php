@@ -653,9 +653,12 @@ class SlotGeneratorService
             return $serviceSlots[0];
         }
 
-        // Different services: convert slots to time ranges, find intersection, then generate common slots
-        // This is needed because different services may have different durations and intervals
-        $allRanges = [];
+        // Different services: find slots that overlap with slots from ALL services
+        // A slot is common if it overlaps with at least one slot from each service
+        $maxDuration = max(array_map(fn($sc) => $sc['config']->duration_minutes, $serviceConfigs));
+        
+        // Convert all service slots to Carbon ranges for easier comparison
+        $allServiceRanges = [];
         foreach ($serviceSlots as $index => $slots) {
             $ranges = [];
             foreach ($slots as $slot) {
@@ -663,67 +666,49 @@ class SlotGeneratorService
                 $end = Carbon::parse($date->format('Y-m-d') . ' ' . $slot['end_time']);
                 $ranges[] = ['start' => $start, 'end' => $end];
             }
-            $allRanges[] = $ranges;
-            
-            \Log::info('Service slots converted to ranges', [
-                'service_index' => $index,
-                'service_id' => $serviceConfigs[$index]['service_id'],
-                'slots_count' => count($slots),
-                'ranges_count' => count($ranges),
-                'first_few_ranges' => array_slice(array_map(function($r) {
-                    return [
-                        'start' => $r['start']->format('H:i'),
-                        'end' => $r['end']->format('H:i'),
-                    ];
-                }, $ranges), 0, 5),
-            ]);
+            $allServiceRanges[] = $ranges;
         }
-
-        // Find intersection of all ranges
-        $commonRanges = $this->findIntersectionOfRanges($allRanges);
         
-        \Log::info('Common ranges found', [
-            'common_ranges_count' => count($commonRanges),
-            'first_few_ranges' => array_slice(array_map(function($r) {
-                return [
-                    'start' => $r['start']->format('H:i'),
-                    'end' => $r['end']->format('H:i'),
-                ];
-            }, $commonRanges), 0, 10),
-        ]);
-
-        // Merge overlapping ranges into larger periods
-        $mergedRanges = $this->mergeOverlappingRanges($commonRanges);
-        
-        \Log::info('Merged ranges', [
-            'merged_ranges_count' => count($mergedRanges),
-            'merged_ranges' => array_map(function($r) {
-                return [
-                    'start' => $r['start']->format('H:i'),
-                    'end' => $r['end']->format('H:i'),
-                ];
-            }, $mergedRanges),
-        ]);
-
-        // Generate slots from merged ranges using maximum duration and minimum slot interval
-        $maxDuration = max(array_map(fn($sc) => $sc['config']->duration_minutes, $serviceConfigs));
-        $slotIntervals = array_map(fn($sc) => $this->getSlotInterval($sc['config']), $serviceConfigs);
-        $minSlotInterval = min($slotIntervals);
-        
-        \Log::info('Slot generation parameters', [
-            'max_duration' => $maxDuration,
-            'min_slot_interval' => $minSlotInterval,
-            'slot_intervals' => $slotIntervals,
-        ]);
-
+        // Use the first service's slots as base, but with maxDuration
+        // Check each slot to see if it overlaps with slots from all other services
+        $firstServiceSlots = $serviceSlots[0];
+        $firstServiceRanges = $allServiceRanges[0];
         $commonSlots = [];
-        foreach ($mergedRanges as $range) {
-            $slots = $this->generateSlotsInRange($range, $maxDuration, $minSlotInterval);
-            $commonSlots = array_merge($commonSlots, $slots);
+        
+        foreach ($firstServiceSlots as $index => $slot) {
+            $slotStart = Carbon::parse($date->format('Y-m-d') . ' ' . $slot['start_time']);
+            // Use maxDuration for the slot end time to ensure it can accommodate all services
+            $slotEnd = $slotStart->copy()->addMinutes($maxDuration);
+            
+            // Check if this slot (with maxDuration) overlaps with at least one slot from each other service
+            $isCommon = true;
+            for ($i = 1; $i < count($allServiceRanges); $i++) {
+                $hasOverlap = false;
+                foreach ($allServiceRanges[$i] as $otherRange) {
+                    // Check if slots overlap: slotStart < otherEnd AND slotEnd > otherStart
+                    if ($slotStart->lt($otherRange['end']) && $slotEnd->gt($otherRange['start'])) {
+                        $hasOverlap = true;
+                        break;
+                    }
+                }
+                if (!$hasOverlap) {
+                    $isCommon = false;
+                    break;
+                }
+            }
+            
+            if ($isCommon) {
+                // Add slot with maxDuration
+                $commonSlots[] = [
+                    'start_time' => $slotStart->format('H:i'),
+                    'end_time' => $slotEnd->format('H:i'),
+                ];
+            }
         }
         
-        \Log::info('Common slots generated', [
+        \Log::info('Common slots found for different services', [
             'common_slots_count' => count($commonSlots),
+            'max_duration' => $maxDuration,
             'first_few_slots' => array_slice($commonSlots, 0, 5),
         ]);
 
