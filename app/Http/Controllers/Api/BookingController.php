@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\BookingRequest;
 use App\Services\BookingService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class BookingController extends Controller
@@ -18,22 +18,12 @@ class BookingController extends Controller
     /**
      * Create a new booking
      * 
-     * @param Request $request
+     * @param BookingRequest $request
      * @return JsonResponse
      */
-    public function store(Request $request): JsonResponse
+    public function store(BookingRequest $request): JsonResponse
     {
-        // Validate request
-        $validated = $request->validate([
-            'service_id' => 'required|integer|exists:services,id',
-            'date' => 'required|date|date_format:Y-m-d',
-            'start_time' => 'required|date',
-            'end_time' => 'required|date|after:start_time',
-            'participants' => 'required|array|min:1|max:1',
-            'participants.*.first_name' => 'required|string|max:255',
-            'participants.*.last_name' => 'required|string|max:255',
-            'participants.*.email' => 'required|email|max:255',
-        ]);
+        $validated = $request->validated();
 
         Log::info('Booking request received', [
             'service_id' => $validated['service_id'],

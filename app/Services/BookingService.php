@@ -114,6 +114,17 @@ class BookingService
                 ];
             }
 
+            // Validate participant data
+            $participantData = $participants[0];
+            $participantValidation = $this->validateParticipant($participantData);
+            if (!$participantValidation['valid']) {
+                return [
+                    'success' => false,
+                    'appointment' => null,
+                    'message' => $participantValidation['message'],
+                ];
+            }
+
             // Create appointment
             $appointment = Appointment::create([
                 'service_id' => $service->id,
