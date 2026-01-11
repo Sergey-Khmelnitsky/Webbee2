@@ -525,21 +525,39 @@ class SlotGeneratorService
         // Find intersection of all periods
         $commonPeriods = $this->findCommonPeriods($servicePeriods, $serviceConfigs, $targetDate);
 
-        // Build response with all services info but common slots only
-        $calendarData = [];
-        foreach ($serviceConfigs as $serviceId => $serviceData) {
-            $service = $serviceData['service'];
-            $config = $serviceData['config'];
+        // Return single result with common slots for all services
+        if (empty($commonPeriods)) {
+            return [];
+        }
 
-            $calendarData[] = [
-                'id' => $service->id,
-                'name' => $service->name,
-                'description' => $service->description,
+        // Get combined service info
+        $serviceNames = array_map(fn($sd) => $sd['service']->name, $serviceConfigs);
+        $serviceIds = array_keys($serviceConfigs);
+        
+        // Use minimum duration and break for common slots
+        $minDuration = min(array_map(fn($sc) => $sc['config']->duration_minutes, $serviceConfigs));
+        $minBreak = min(array_map(fn($sc) => $sc['config']->break_between_minutes, $serviceConfigs));
+        $minMaxClients = min(array_map(fn($sc) => $sc['config']->max_concurrent_clients, $serviceConfigs));
+        $minAdvanceDays = min(array_map(fn($sc) => $sc['config']->booking_advance_days, $serviceConfigs));
+
+        return [
+            [
+                'id' => implode(',', $serviceIds), // Combined IDs
+                'name' => implode(' & ', $serviceNames), // Combined names
+                'description' => 'Common available slots for selected services',
+                'service_ids' => $serviceIds,
+                'services' => array_map(function($serviceId) use ($serviceConfigs) {
+                    $service = $serviceConfigs[$serviceId]['service'];
+                    return [
+                        'id' => $service->id,
+                        'name' => $service->name,
+                    ];
+                }, $serviceIds),
                 'configuration' => [
-                    'duration_minutes' => $config->duration_minutes,
-                    'break_between_minutes' => $config->break_between_minutes,
-                    'max_concurrent_clients' => $config->max_concurrent_clients,
-                    'booking_advance_days' => $config->booking_advance_days,
+                    'duration_minutes' => $minDuration,
+                    'break_between_minutes' => $minBreak,
+                    'max_concurrent_clients' => $minMaxClients,
+                    'booking_advance_days' => $minAdvanceDays,
                 ],
                 'date' => [
                     'date' => $targetDate->format('Y-m-d'),
@@ -548,10 +566,8 @@ class SlotGeneratorService
                     'slots' => $commonPeriods,
                     'has_available_slots' => !empty($commonPeriods),
                 ],
-            ];
-        }
-
-        return $calendarData;
+            ],
+        ];
     }
 
     /**
