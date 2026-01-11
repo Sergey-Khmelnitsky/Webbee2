@@ -19,7 +19,7 @@ class AppointmentListScreen extends Screen
     public function query(): iterable
     {
         return [
-            'appointments' => Appointment::with(['service', 'participants', 'createdBy'])
+            'appointments' => Appointment::with(['service', 'participants'])
                 ->latest('start_time')
                 ->paginate(),
         ];

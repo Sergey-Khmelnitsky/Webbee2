@@ -128,10 +128,9 @@ class AppointmentSeeder extends Seeder
                 if ($existingCount < $config->max_concurrent_clients) {
                     $appointment = Appointment::create([
                         'service_id' => $service->id,
-                        'created_by_user_id' => null, // Client booking
                         'start_time' => $slotStart,
                         'end_time' => $slotEnd,
-                        'status' => $this->randomStatus(),
+                        'status' => 'pending',
                         'notes' => null,
                     ]);
 
@@ -185,20 +184,4 @@ class AppointmentSeeder extends Seeder
         return true;
     }
 
-    private function randomStatus(): string
-    {
-        $statuses = ['pending', 'confirmed', 'completed'];
-        $weights = [30, 60, 10]; // 30% pending, 60% confirmed, 10% completed
-        $random = rand(1, 100);
-        $cumulative = 0;
-
-        foreach ($statuses as $index => $status) {
-            $cumulative += $weights[$index];
-            if ($random <= $cumulative) {
-                return $status;
-            }
-        }
-
-        return 'pending';
-    }
 }

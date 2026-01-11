@@ -13,7 +13,6 @@ class Appointment extends Model
 
     protected $fillable = [
         'service_id',
-        'created_by_user_id',
         'start_time',
         'end_time',
         'status',
@@ -37,13 +36,6 @@ class Appointment extends Model
         return $this->belongsTo(Service::class);
     }
 
-    /**
-     * Get the user who created the appointment.
-     */
-    public function createdBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'created_by_user_id');
-    }
 
     /**
      * Get the participants for the appointment.

@@ -32,7 +32,7 @@ class AppointmentEditScreen extends Screen
         }
 
         $this->appointment = $appointment;
-        $appointment->load(['service', 'participants', 'createdBy']);
+        $appointment->load(['service', 'participants']);
 
         return [
             'appointment' => $appointment,
