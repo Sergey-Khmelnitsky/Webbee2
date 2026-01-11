@@ -349,25 +349,27 @@ class SlotGeneratorService
 
     /**
      * Filter out periods that are too short for an appointment
+     * 
+     * Now end_time is the last possible end time, so we check if there's enough time
+     * for at least one appointment (start + duration <= end)
      */
     private function filterValidPeriods(array $availablePeriods, Carbon $date, $config): array
     {
         $filtered = array_filter($availablePeriods, function ($period) use ($config, $date) {
             $start = Carbon::parse($date->format('Y-m-d') . ' ' . $period['start_time']);
             $end = Carbon::parse($date->format('Y-m-d') . ' ' . $period['end_time']);
+            
             // Check if there's enough time for at least one appointment
-            // end_time is already the latest start time, so we check if difference >= duration_minutes
-            // Use absolute difference to handle both directions
-            $diffMinutes = abs($end->diffInMinutes($start));
-            $isValid = $diffMinutes >= $config->duration_minutes && $end->gte($start);
+            // end_time is now the last possible end time, so we check if start + duration <= end
+            $earliestEnd = $start->copy()->addMinutes($config->duration_minutes);
+            $isValid = $earliestEnd->lte($end);
             
             \Log::info('Filtering period', [
                 'period' => $period,
                 'start' => $start->format('Y-m-d H:i'),
                 'end' => $end->format('Y-m-d H:i'),
-                'diff_minutes' => $diffMinutes,
+                'earliest_end' => $earliestEnd->format('Y-m-d H:i'),
                 'duration_minutes' => $config->duration_minutes,
-                'end_gte_start' => $end->gte($start),
                 'is_valid' => $isValid,
             ]);
             
