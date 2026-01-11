@@ -889,15 +889,15 @@ class SlotGeneratorService
             $periodStart = Carbon::parse($date->format('Y-m-d') . ' ' . $period['start_time']);
             $periodEnd = Carbon::parse($date->format('Y-m-d') . ' ' . $period['end_time']);
             
-            // Find minimum duration and break from all services to generate slots
-            $minDuration = null;
+            // Find maximum duration (longest service) and minimum break from all services to generate slots
+            $maxDuration = null;
             $minBreak = null;
             foreach ($serviceCounts as $serviceId => $count) {
                 if (isset($services[$serviceId])) {
                     $config = $services[$serviceId]->configuration;
                     if ($config) {
-                        if ($minDuration === null || $config->duration_minutes < $minDuration) {
-                            $minDuration = $config->duration_minutes;
+                        if ($maxDuration === null || $config->duration_minutes > $maxDuration) {
+                            $maxDuration = $config->duration_minutes;
                         }
                         if ($minBreak === null || $config->break_between_minutes < $minBreak) {
                             $minBreak = $config->break_between_minutes;
@@ -906,17 +906,17 @@ class SlotGeneratorService
                 }
             }
             
-            if ($minDuration === null || $minBreak === null) {
+            if ($maxDuration === null || $minBreak === null) {
                 continue;
             }
             
-            // Generate all possible slots in this period
-            $slotInterval = $minDuration + $minBreak;
+            // Generate all possible slots in this period using maximum duration
+            $slotInterval = $maxDuration + $minBreak;
             $currentSlotStart = $periodStart->copy();
             $hasAvailableSlot = false;
             
-            while ($currentSlotStart->copy()->addMinutes($minDuration)->lte($periodEnd)) {
-                $slotEnd = $currentSlotStart->copy()->addMinutes($minDuration);
+            while ($currentSlotStart->copy()->addMinutes($maxDuration)->lte($periodEnd)) {
+                $slotEnd = $currentSlotStart->copy()->addMinutes($maxDuration);
                 
                 // Check if this specific slot has capacity for all requested services
                 $slotHasCapacity = true;
