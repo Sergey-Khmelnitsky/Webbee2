@@ -25,7 +25,7 @@ class AppointmentEditScreen extends Screen
      *
      * @return array
      */
-    public function query(Appointment $appointment = null): iterable
+    public function query(?Appointment $appointment = null): iterable
     {
         if ($appointment === null) {
             $appointment = new Appointment();
