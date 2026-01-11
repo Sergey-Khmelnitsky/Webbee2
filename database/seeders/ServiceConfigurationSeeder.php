@@ -113,8 +113,9 @@ class ServiceConfigurationSeeder extends Seeder
         ServiceConfiguration::updateOrCreate(
             ['service_id' => $service->id],
             [
-                'duration_minutes' => 60, // slots every 1 hour
+                'duration_minutes' => 60, // appointment duration
                 'break_between_minutes' => 10,
+                'slot_interval_minutes' => 60, // slots every 1 hour
                 'max_concurrent_clients' => 3,
                 'booking_advance_days' => 7,
             ]
