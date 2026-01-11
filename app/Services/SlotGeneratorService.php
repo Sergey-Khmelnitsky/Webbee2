@@ -861,4 +861,108 @@ class SlotGeneratorService
         $merged[] = $current;
         return $merged;
     }
+
+    /**
+     * Filter slots by max_concurrent_clients for each service
+     * Checks that each slot has enough capacity for all requested service instances
+     * 
+     * @param array $periods Array of periods with start_time and end_time
+     * @param array $serviceCounts Array of [service_id => count]
+     * @param \Illuminate\Database\Eloquent\Collection $services Collection of Service models
+     * @param Carbon $date
+     * @return array Filtered periods (only periods where at least one slot has capacity)
+     */
+    private function filterSlotsByMaxConcurrentClients(
+        array $periods, 
+        array $serviceCounts, 
+        $services, 
+        Carbon $date
+    ): array {
+        if (empty($periods)) {
+            return [];
+        }
+
+        $filtered = [];
+        
+        foreach ($periods as $period) {
+            $periodStart = Carbon::parse($date->format('Y-m-d') . ' ' . $period['start_time']);
+            $periodEnd = Carbon::parse($date->format('Y-m-d') . ' ' . $period['end_time']);
+            
+            // Find minimum duration and break from all services to generate slots
+            $minDuration = null;
+            $minBreak = null;
+            foreach ($serviceCounts as $serviceId => $count) {
+                if (isset($services[$serviceId])) {
+                    $config = $services[$serviceId]->configuration;
+                    if ($config) {
+                        if ($minDuration === null || $config->duration_minutes < $minDuration) {
+                            $minDuration = $config->duration_minutes;
+                        }
+                        if ($minBreak === null || $config->break_between_minutes < $minBreak) {
+                            $minBreak = $config->break_between_minutes;
+                        }
+                    }
+                }
+            }
+            
+            if ($minDuration === null || $minBreak === null) {
+                continue;
+            }
+            
+            // Generate all possible slots in this period
+            $slotInterval = $minDuration + $minBreak;
+            $currentSlotStart = $periodStart->copy();
+            $hasAvailableSlot = false;
+            
+            while ($currentSlotStart->copy()->addMinutes($minDuration)->lte($periodEnd)) {
+                $slotEnd = $currentSlotStart->copy()->addMinutes($minDuration);
+                
+                // Check if this specific slot has capacity for all requested services
+                $slotHasCapacity = true;
+                
+                foreach ($serviceCounts as $serviceId => $requestedCount) {
+                    if (!isset($services[$serviceId])) {
+                        $slotHasCapacity = false;
+                        break;
+                    }
+                    
+                    $service = $services[$serviceId];
+                    $config = $service->configuration;
+                    
+                    if (!$config) {
+                        $slotHasCapacity = false;
+                        break;
+                    }
+                    
+                    // Count existing bookings for this service at this exact time slot
+                    $existingBookings = Appointment::where('service_id', $serviceId)
+                        ->where('start_time', $currentSlotStart)
+                        ->whereNull('deleted_at')
+                        ->count();
+                    
+                    // Check if there's enough capacity
+                    $availableCapacity = $config->max_concurrent_clients - $existingBookings;
+                    
+                    if ($availableCapacity < $requestedCount) {
+                        $slotHasCapacity = false;
+                        break;
+                    }
+                }
+                
+                if ($slotHasCapacity) {
+                    $hasAvailableSlot = true;
+                    break; // At least one slot in this period has capacity
+                }
+                
+                $currentSlotStart->addMinutes($slotInterval);
+            }
+            
+            // Only include period if it has at least one available slot
+            if ($hasAvailableSlot) {
+                $filtered[] = $period;
+            }
+        }
+        
+        return $filtered;
+    }
 }
