@@ -25,18 +25,14 @@ class AppointmentEditScreen extends Screen
      *
      * @return array
      */
-    public function query(): iterable
+    public function query(?Appointment $appointment = null): iterable
     {
-        // Get appointment from route parameter if exists, otherwise create new
-        $appointment = request()->route('appointment');
-        
         if ($appointment === null) {
             $appointment = new Appointment();
-        } else {
-            $appointment->load(['service', 'participants']);
         }
 
         $this->appointment = $appointment;
+        $appointment->load(['service', 'participants']);
 
         return [
             'appointment' => $appointment,
@@ -78,7 +74,7 @@ class AppointmentEditScreen extends Screen
 
             Button::make('Save')
                 ->icon('bs.check-circle')
-                ->method($this->appointment->exists ? 'save' : 'create'),
+                ->method('save'),
         ];
     }
 
@@ -124,7 +120,7 @@ class AppointmentEditScreen extends Screen
     }
 
     /**
-     * Save appointment (for editing existing)
+     * Save the appointment
      */
     public function save(Appointment $appointment, Request $request): \Illuminate\Http\RedirectResponse
     {
@@ -137,21 +133,7 @@ class AppointmentEditScreen extends Screen
     }
 
     /**
-     * Create new appointment (for creating new)
-     */
-    public function create(Request $request): \Illuminate\Http\RedirectResponse
-    {
-        $appointment = new Appointment();
-        $appointment->fill($request->get('appointment'));
-        $appointment->save();
-
-        Toast::info('Appointment created.');
-
-        return redirect()->route('platform.systems.appointments');
-    }
-
-    /**
-     * Remove appointment
+     * Remove the appointment
      */
     public function remove(Appointment $appointment): \Illuminate\Http\RedirectResponse
     {
