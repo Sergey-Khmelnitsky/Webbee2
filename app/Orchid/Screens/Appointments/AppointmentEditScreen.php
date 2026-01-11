@@ -125,14 +125,8 @@ class AppointmentEditScreen extends Screen
     /**
      * Save the appointment
      */
-    public function save(Request $request): \Illuminate\Http\RedirectResponse
+    public function save(Appointment $appointment, Request $request): \Illuminate\Http\RedirectResponse
     {
-        $appointment = $request->route('appointment');
-        
-        if ($appointment === null) {
-            $appointment = new Appointment();
-        }
-
         $appointment->fill($request->get('appointment'));
         $appointment->save();
 

@@ -4,6 +4,7 @@ namespace App\Orchid\Screens\Appointments;
 
 use App\Models\Appointment;
 use Orchid\Screen\Actions\Button;
+use Orchid\Screen\Actions\Link;
 use Orchid\Screen\Screen;
 use Orchid\Screen\TD;
 use Orchid\Support\Facades\Layout;
@@ -36,6 +37,14 @@ class AppointmentListScreen extends Screen
     }
 
     /**
+     * Display header description.
+     */
+    public function description(): ?string
+    {
+        return 'Manage appointments and their status.';
+    }
+
+    /**
      * The screen's action buttons.
      *
      * @return \Orchid\Screen\Action[]
@@ -43,8 +52,8 @@ class AppointmentListScreen extends Screen
     public function commandBar(): iterable
     {
         return [
-            Button::make('Create')
-                ->icon('plus')
+            Link::make('Create')
+                ->icon('bs.plus')
                 ->route('platform.systems.appointments.create'),
         ];
     }
@@ -58,56 +67,50 @@ class AppointmentListScreen extends Screen
     {
         return [
             Layout::table('appointments', [
-                TD::make('id', 'ID')
-                    ->sort(),
-
-                TD::make('service.name', 'Service')
-                    ->sort(),
-
+                TD::make('id', 'ID')->sort(),
+                TD::make('service.name', 'Service')->sort(),
                 TD::make('start_time', 'Start Date & Time')
                     ->render(fn (Appointment $appointment) => $appointment->start_time->format('d.m.Y H:i'))
                     ->sort(),
-
                 TD::make('end_time', 'End Date & Time')
                     ->render(fn (Appointment $appointment) => $appointment->end_time->format('d.m.Y H:i'))
                     ->sort(),
-
                 TD::make('participants', 'Participants')
-                    ->render(fn (Appointment $appointment) => $appointment->participants->map(fn ($p) => $p->full_name)->join(', ')),
-
+                    ->render(function (Appointment $appointment) {
+                        return $appointment->participants->map(fn ($p) => $p->fullName . ' (' . $p->email . ')')->implode('<br>');
+                    }),
                 TD::make('status', 'Status')
-                    ->render(fn (Appointment $appointment) => match($appointment->status) {
-                        'pending' => '<span class="badge badge-warning">Pending</span>',
-                        'confirmed' => '<span class="badge badge-success">Confirmed</span>',
-                        'cancelled' => '<span class="badge badge-danger">Cancelled</span>',
-                        'completed' => '<span class="badge badge-info">Completed</span>',
-                        default => $appointment->status,
+                    ->render(function (Appointment $appointment) {
+                        $color = match ($appointment->status) {
+                            'pending'   => 'info',
+                            'confirmed' => 'success',
+                            'cancelled' => 'danger',
+                            'completed' => 'dark',
+                            default     => 'light',
+                        };
+                        return "<span class='badge bg-{$color}'>{$appointment->status}</span>";
                     })
                     ->sort(),
-
                 TD::make('actions', 'Actions')
                     ->render(function (Appointment $appointment) {
-                        $buttons = [];
-
-                        $buttons[] = Button::make('Edit')
-                            ->route('platform.systems.appointments.edit', $appointment->id)
-                            ->icon('pencil')
-                            ->class('btn btn-primary');
+                        $buttons = [
+                            Link::make('Edit')
+                                ->icon('bs.pencil')
+                                ->route('platform.systems.appointments.edit', $appointment),
+                        ];
 
                         if ($appointment->status === 'pending') {
                             $buttons[] = Button::make('Confirm')
-                                ->method('confirm')
-                                ->parameters(['appointment' => $appointment->id])
-                                ->icon('check')
-                                ->class('btn btn-success');
+                                ->icon('bs.check')
+                                ->class('btn btn-success')
+                                ->method('confirm', ['appointment' => $appointment->id]);
                         }
 
-                        if (in_array($appointment->status, ['pending', 'confirmed'])) {
+                        if ($appointment->status === 'pending' || $appointment->status === 'confirmed') {
                             $buttons[] = Button::make('Cancel')
-                                ->method('cancel')
-                                ->parameters(['appointment' => $appointment->id])
-                                ->icon('close')
+                                ->icon('bs.x')
                                 ->class('btn btn-danger')
+                                ->method('cancel', ['appointment' => $appointment->id])
                                 ->confirm('Are you sure you want to cancel this appointment?');
                         }
 
