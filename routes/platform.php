@@ -90,7 +90,7 @@ Route::screen('appointments', AppointmentListScreen::class)
     ->name('platform.systems.appointments')
     ->breadcrumbs(fn (Trail $trail) => $trail
         ->parent('platform.index')
-        ->push('Записи на прием', route('platform.systems.appointments')));
+        ->push('Appointments', route('platform.systems.appointments')));
 
 // Example...
 Route::screen('example', ExampleScreen::class)

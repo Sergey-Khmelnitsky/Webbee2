@@ -32,7 +32,7 @@ class AppointmentListScreen extends Screen
      */
     public function name(): ?string
     {
-        return 'Записи на прием';
+        return 'Appointments';
     }
 
     /**
@@ -57,36 +57,36 @@ class AppointmentListScreen extends Screen
                 TD::make('id', 'ID')
                     ->sort(),
 
-                TD::make('service.name', 'Услуга')
+                TD::make('service.name', 'Service')
                     ->sort(),
 
-                TD::make('start_time', 'Дата и время начала')
+                TD::make('start_time', 'Start Date & Time')
                     ->render(fn (Appointment $appointment) => $appointment->start_time->format('d.m.Y H:i'))
                     ->sort(),
 
-                TD::make('end_time', 'Дата и время окончания')
+                TD::make('end_time', 'End Date & Time')
                     ->render(fn (Appointment $appointment) => $appointment->end_time->format('d.m.Y H:i'))
                     ->sort(),
 
-                TD::make('participants', 'Участники')
+                TD::make('participants', 'Participants')
                     ->render(fn (Appointment $appointment) => $appointment->participants->map(fn ($p) => $p->full_name)->join(', ')),
 
-                TD::make('status', 'Статус')
+                TD::make('status', 'Status')
                     ->render(fn (Appointment $appointment) => match($appointment->status) {
-                        'pending' => '<span class="badge badge-warning">Ожидает</span>',
-                        'confirmed' => '<span class="badge badge-success">Подтверждено</span>',
-                        'cancelled' => '<span class="badge badge-danger">Отменено</span>',
-                        'completed' => '<span class="badge badge-info">Завершено</span>',
+                        'pending' => '<span class="badge badge-warning">Pending</span>',
+                        'confirmed' => '<span class="badge badge-success">Confirmed</span>',
+                        'cancelled' => '<span class="badge badge-danger">Cancelled</span>',
+                        'completed' => '<span class="badge badge-info">Completed</span>',
                         default => $appointment->status,
                     })
                     ->sort(),
 
-                TD::make('actions', 'Действия')
+                TD::make('actions', 'Actions')
                     ->render(function (Appointment $appointment) {
                         $buttons = [];
 
                         if ($appointment->status === 'pending') {
-                            $buttons[] = Button::make('Подтвердить')
+                            $buttons[] = Button::make('Confirm')
                                 ->method('confirm')
                                 ->parameters(['appointment' => $appointment->id])
                                 ->icon('check')
@@ -94,12 +94,12 @@ class AppointmentListScreen extends Screen
                         }
 
                         if (in_array($appointment->status, ['pending', 'confirmed'])) {
-                            $buttons[] = Button::make('Отменить')
+                            $buttons[] = Button::make('Cancel')
                                 ->method('cancel')
                                 ->parameters(['appointment' => $appointment->id])
                                 ->icon('close')
                                 ->class('btn btn-danger')
-                                ->confirm('Вы уверены, что хотите отменить эту запись?');
+                                ->confirm('Are you sure you want to cancel this appointment?');
                         }
 
                         return implode(' ', $buttons);
@@ -115,7 +115,7 @@ class AppointmentListScreen extends Screen
     {
         $appointmentModel = Appointment::findOrFail($appointment);
         $appointmentModel->update(['status' => 'confirmed']);
-        Toast::success('Запись подтверждена');
+        Toast::success('Appointment confirmed');
     }
 
     /**
@@ -125,6 +125,6 @@ class AppointmentListScreen extends Screen
     {
         $appointmentModel = Appointment::findOrFail($appointment);
         $appointmentModel->update(['status' => 'cancelled']);
-        Toast::info('Запись отменена');
+        Toast::info('Appointment cancelled');
     }
 }
