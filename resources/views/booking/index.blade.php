@@ -374,7 +374,6 @@
             currentSelectedDate = selectedDate;
 
             // Set hidden fields
-            document.getElementById('modalServiceId').value = serviceData.id;
             document.getElementById('modalDate').value = selectedDate;
 
             // Calculate available slots in this period using maximum duration
