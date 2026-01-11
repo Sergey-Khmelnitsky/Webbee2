@@ -134,13 +134,12 @@ class BookingService
                 'notes' => null,
             ]);
 
-            // Create participant
-            $participantData = $participants[0];
+            // Create participant (use trimmed and validated data)
             AppointmentParticipant::create([
                 'appointment_id' => $appointment->id,
-                'first_name' => $participantData['first_name'],
-                'last_name' => $participantData['last_name'],
-                'email' => $participantData['email'],
+                'first_name' => trim($participantData['first_name']),
+                'last_name' => trim($participantData['last_name']),
+                'email' => trim($participantData['email']),
             ]);
 
             DB::commit();
