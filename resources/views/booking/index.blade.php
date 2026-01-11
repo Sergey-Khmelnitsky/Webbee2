@@ -76,7 +76,7 @@
 
         <!-- Booking Modal -->
         <div id="bookingModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-            <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="relative top-10 mx-auto p-5 border w-full max-w-3xl shadow-lg rounded-md bg-white my-10">
                 <div class="mt-3">
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="text-lg font-semibold text-gray-900">Book Appointment</h3>
@@ -92,10 +92,10 @@
                     </div>
 
                     <form id="bookingFormModal">
-                        <input type="hidden" id="modalServiceId" name="service_id">
                         <input type="hidden" id="modalDate" name="date">
                         
-                        <div class="mb-4">
+                        <!-- Common Time Slot Selection -->
+                        <div class="mb-6">
                             <label class="block text-sm font-medium text-gray-700 mb-2">
                                 Select Time Slot <span class="text-red-500">*</span>
                             </label>
@@ -104,46 +104,12 @@
                             </div>
                         </div>
 
-                        <div class="mb-4">
-                            <label for="first_name" class="block text-sm font-medium text-gray-700 mb-2">
-                                First Name <span class="text-red-500">*</span>
-                            </label>
-                            <input 
-                                type="text" 
-                                id="first_name" 
-                                name="first_name" 
-                                required
-                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
+                        <!-- Participants Forms -->
+                        <div id="participantsForms" class="space-y-6">
+                            <!-- Participant forms will be populated here -->
                         </div>
 
-                        <div class="mb-4">
-                            <label for="last_name" class="block text-sm font-medium text-gray-700 mb-2">
-                                Last Name <span class="text-red-500">*</span>
-                            </label>
-                            <input 
-                                type="text" 
-                                id="last_name" 
-                                name="last_name" 
-                                required
-                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                        </div>
-
-                        <div class="mb-4">
-                            <label for="email" class="block text-sm font-medium text-gray-700 mb-2">
-                                Email <span class="text-red-500">*</span>
-                            </label>
-                            <input 
-                                type="email" 
-                                id="email" 
-                                name="email" 
-                                required
-                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                        </div>
-
-                        <div class="flex justify-end space-x-3">
+                        <div class="flex justify-end space-x-3 mt-6">
                             <button 
                                 type="button" 
                                 id="cancelBookingBtn"
@@ -156,7 +122,7 @@
                                 id="submitBookingBtn"
                                 class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                             >
-                                Book Appointment
+                                Book All Appointments
                             </button>
                         </div>
                     </form>
@@ -449,12 +415,113 @@
                 });
             }
 
+            // Generate participant forms for each service
+            generateParticipantForms(serviceData);
+
             // Reset form
             document.getElementById('bookingFormModal').reset();
             document.getElementById('modalError').classList.add('hidden');
 
             // Show modal
             document.getElementById('bookingModal').classList.remove('hidden');
+        }
+
+        function generateParticipantForms(serviceData) {
+            const formsContainer = document.getElementById('participantsForms');
+            formsContainer.innerHTML = '';
+
+            // Get services array from serviceData
+            const services = serviceData.services || [];
+            
+            if (services.length === 0) {
+                // Fallback: if services array is not available, use service_ids
+                const serviceIds = serviceData.service_ids || [];
+                const serviceCounts = {};
+                serviceIds.forEach(id => {
+                    serviceCounts[id] = (serviceCounts[id] || 0) + 1;
+                });
+                
+                // Create forms based on counts (we don't have service names here)
+                Object.entries(serviceCounts).forEach(([serviceId, count]) => {
+                    for (let i = 0; i < count; i++) {
+                        createParticipantForm(formsContainer, serviceId, `Service ${serviceId}`, i + 1, count);
+                    }
+                });
+            } else {
+                // Create forms for each service with count
+                services.forEach(service => {
+                    for (let i = 0; i < service.count; i++) {
+                        createParticipantForm(formsContainer, service.id, service.name, i + 1, service.count);
+                    }
+                });
+            }
+        }
+
+        function createParticipantForm(container, serviceId, serviceName, index, total) {
+            const formDiv = document.createElement('div');
+            formDiv.className = 'border border-gray-200 rounded-lg p-4 bg-gray-50';
+            
+            const title = document.createElement('h4');
+            title.className = 'text-md font-semibold text-gray-900 mb-4';
+            if (total > 1) {
+                title.textContent = `${serviceName} - Person ${index} of ${total}`;
+            } else {
+                title.textContent = serviceName;
+            }
+            formDiv.appendChild(title);
+
+            const serviceIdInput = document.createElement('input');
+            serviceIdInput.type = 'hidden';
+            serviceIdInput.name = 'participants[][service_id]';
+            serviceIdInput.value = serviceId;
+            formDiv.appendChild(serviceIdInput);
+
+            // First Name
+            const firstNameDiv = document.createElement('div');
+            firstNameDiv.className = 'mb-4';
+            const firstNameLabel = document.createElement('label');
+            firstNameLabel.className = 'block text-sm font-medium text-gray-700 mb-2';
+            firstNameLabel.innerHTML = 'First Name <span class="text-red-500">*</span>';
+            const firstNameInput = document.createElement('input');
+            firstNameInput.type = 'text';
+            firstNameInput.name = 'participants[][first_name]';
+            firstNameInput.required = true;
+            firstNameInput.className = 'w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
+            firstNameDiv.appendChild(firstNameLabel);
+            firstNameDiv.appendChild(firstNameInput);
+            formDiv.appendChild(firstNameDiv);
+
+            // Last Name
+            const lastNameDiv = document.createElement('div');
+            lastNameDiv.className = 'mb-4';
+            const lastNameLabel = document.createElement('label');
+            lastNameLabel.className = 'block text-sm font-medium text-gray-700 mb-2';
+            lastNameLabel.innerHTML = 'Last Name <span class="text-red-500">*</span>';
+            const lastNameInput = document.createElement('input');
+            lastNameInput.type = 'text';
+            lastNameInput.name = 'participants[][last_name]';
+            lastNameInput.required = true;
+            lastNameInput.className = 'w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
+            lastNameDiv.appendChild(lastNameLabel);
+            lastNameDiv.appendChild(lastNameInput);
+            formDiv.appendChild(lastNameDiv);
+
+            // Email
+            const emailDiv = document.createElement('div');
+            emailDiv.className = 'mb-4';
+            const emailLabel = document.createElement('label');
+            emailLabel.className = 'block text-sm font-medium text-gray-700 mb-2';
+            emailLabel.innerHTML = 'Email <span class="text-red-500">*</span>';
+            const emailInput = document.createElement('input');
+            emailInput.type = 'email';
+            emailInput.name = 'participants[][email]';
+            emailInput.required = true;
+            emailInput.className = 'w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
+            emailDiv.appendChild(emailLabel);
+            emailDiv.appendChild(emailInput);
+            formDiv.appendChild(emailDiv);
+
+            container.appendChild(formDiv);
         }
 
         function closeBookingModal() {
@@ -526,17 +593,66 @@
             }
 
             const [slotStart, slotEnd] = selectedSlot.split('-');
-            const bookingData = {
-                service_id: parseInt(formData.get('service_id')),
-                date: formData.get('date'),
-                start_time: `${formData.get('date')} ${slotStart}:00`,
-                end_time: `${formData.get('date')} ${slotEnd}:00`,
-                participants: [{
-                    first_name: formData.get('first_name'),
-                    last_name: formData.get('last_name'),
-                    email: formData.get('email')
-                }]
-            };
+            const date = formData.get('date');
+
+            // Collect all participants with their service IDs
+            const participants = [];
+            const participantInputs = this.querySelectorAll('input[name^="participants["]');
+            
+            let currentParticipant = null;
+            participantInputs.forEach(input => {
+                const name = input.name;
+                if (name.includes('[service_id]')) {
+                    if (currentParticipant) {
+                        participants.push(currentParticipant);
+                    }
+                    currentParticipant = {
+                        service_id: parseInt(input.value)
+                    };
+                } else if (name.includes('[first_name]')) {
+                    if (currentParticipant) {
+                        currentParticipant.first_name = input.value;
+                    }
+                } else if (name.includes('[last_name]')) {
+                    if (currentParticipant) {
+                        currentParticipant.last_name = input.value;
+                    }
+                } else if (name.includes('[email]')) {
+                    if (currentParticipant) {
+                        currentParticipant.email = input.value;
+                    }
+                }
+            });
+            if (currentParticipant) {
+                participants.push(currentParticipant);
+            }
+
+            // Validate all participants
+            const invalidParticipants = participants.filter(p => !p.first_name || !p.last_name || !p.email);
+            if (invalidParticipants.length > 0) {
+                showModalError('Please fill in all fields for all participants');
+                return;
+            }
+
+            // Group participants by service_id and create bookings
+            const bookingsByService = {};
+            participants.forEach(participant => {
+                const serviceId = participant.service_id;
+                if (!bookingsByService[serviceId]) {
+                    bookingsByService[serviceId] = {
+                        service_id: serviceId,
+                        date: date,
+                        start_time: `${date} ${slotStart}:00`,
+                        end_time: `${date} ${slotEnd}:00`,
+                        participants: []
+                    };
+                }
+                bookingsByService[serviceId].participants.push({
+                    first_name: participant.first_name,
+                    last_name: participant.last_name,
+                    email: participant.email
+                });
+            });
 
             // Disable submit button
             const submitBtn = document.getElementById('submitBookingBtn');
@@ -544,31 +660,36 @@
             submitBtn.textContent = 'Booking...';
 
             try {
-                const response = await fetch('/api/bookings', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
-                    },
-                    body: JSON.stringify(bookingData)
-                });
+                // Create bookings for each service
+                const bookingPromises = Object.values(bookingsByService).map(bookingData => 
+                    fetch('/api/bookings', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+                        },
+                        body: JSON.stringify(bookingData)
+                    }).then(res => res.json())
+                );
 
-                const data = await response.json();
-
-                if (response.ok) {
-                    alert('Appointment booked successfully!');
-                    closeBookingModal();
-                    // Optionally reload the calendar
-                    document.getElementById('bookingForm').dispatchEvent(new Event('submit'));
+                const results = await Promise.all(bookingPromises);
+                
+                const errors = results.filter(r => !r.success);
+                if (errors.length > 0) {
+                    const errorMessages = errors.map(e => e.message || 'Booking failed').join('; ');
+                    showModalError(errorMessages);
                 } else {
-                    showModalError(data.message || 'Failed to book appointment. Please try again.');
+                    alert('All appointments booked successfully!');
+                    closeBookingModal();
+                    // Reload the calendar
+                    document.getElementById('bookingForm').dispatchEvent(new Event('submit'));
                 }
             } catch (error) {
-                console.error('Error booking appointment:', error);
+                console.error('Error booking appointments:', error);
                 showModalError('An error occurred. Please try again.');
             } finally {
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Book Appointment';
+                submitBtn.textContent = 'Book All Appointments';
             }
         });
 
