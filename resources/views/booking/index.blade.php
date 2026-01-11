@@ -377,12 +377,14 @@
             document.getElementById('modalServiceId').value = serviceData.id;
             document.getElementById('modalDate').value = selectedDate;
 
-            // Calculate available slots in this period
+            // Calculate available slots in this period using maximum duration
+            const maxDuration = serviceData.configuration.duration_minutes;
+            const minBreak = serviceData.configuration.break_between_minutes;
             const slots = calculateSlotsInPeriod(
                 period.start_time,
                 period.end_time,
-                serviceData.configuration.duration_minutes,
-                serviceData.configuration.break_between_minutes
+                maxDuration,
+                minBreak
             );
 
             // Populate time slots list
