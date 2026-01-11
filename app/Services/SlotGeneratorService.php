@@ -115,22 +115,40 @@ class SlotGeneratorService
     }
 
     /**
-     * Get calendar data for all services
+     * Get calendar data for a specific date
+     * 
+     * @param string $date Date in Y-m-d format
+     * @param int|null $serviceId Optional service ID to filter by
+     * @return array
      */
-    public function getCalendarData(int $daysAhead = 7): array
+    public function getCalendarDataForDate(string $date, ?int $serviceId = null): array
     {
-        $services = Service::with(['configuration', 'schedules', 'breaks', 'holidays'])
-            ->where('is_active', true)
-            ->get();
+        $targetDate = Carbon::parse($date);
+        
+        $query = Service::with(['configuration', 'schedules', 'breaks', 'holidays'])
+            ->where('is_active', true);
+
+        if ($serviceId !== null) {
+            $query->where('id', $serviceId);
+        }
+
+        $services = $query->get();
 
         $calendarData = [];
-        $today = Carbon::today();
 
         foreach ($services as $service) {
             $config = $service->configuration;
             if (!$config) {
                 continue;
             }
+
+            // Check if date is within booking advance days
+            $maxDate = Carbon::today()->addDays($config->booking_advance_days);
+            if ($targetDate->isAfter($maxDate) || $targetDate->isBefore(Carbon::today())) {
+                continue;
+            }
+
+            $slots = $this->generateAvailableSlots($service, $targetDate);
 
             $serviceData = [
                 'id' => $service->id,
@@ -142,23 +160,14 @@ class SlotGeneratorService
                     'max_concurrent_clients' => $config->max_concurrent_clients,
                     'booking_advance_days' => $config->booking_advance_days,
                 ],
-                'dates' => [],
-            ];
-
-            $maxDate = $today->copy()->addDays(min($daysAhead, $config->booking_advance_days));
-
-            for ($date = $today->copy(); $date->lte($maxDate); $date->addDay()) {
-                $slots = $this->generateAvailableSlots($service, $date);
-
-                // Include date even if no slots available (for frontend to show unavailable dates)
-                $serviceData['dates'][] = [
-                    'date' => $date->format('Y-m-d'),
-                    'day_of_week' => $date->format('l'),
-                    'day_of_week_short' => $date->format('D'),
+                'date' => [
+                    'date' => $targetDate->format('Y-m-d'),
+                    'day_of_week' => $targetDate->format('l'),
+                    'day_of_week_short' => $targetDate->format('D'),
                     'slots' => $slots,
                     'has_available_slots' => !empty($slots),
-                ];
-            }
+                ],
+            ];
 
             $calendarData[] = $serviceData;
         }
