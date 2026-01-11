@@ -538,8 +538,16 @@ class SlotGeneratorService
         // Find intersection of all periods (including duplicates)
         $commonPeriods = $this->findCommonPeriodsForInstances($servicePeriods, $serviceConfigs, $targetDate);
 
+        // Filter slots by max_concurrent_clients for each service
+        $filteredPeriods = $this->filterSlotsByMaxConcurrentClients(
+            $commonPeriods, 
+            $serviceCounts, 
+            $services, 
+            $targetDate
+        );
+
         // Return single result with common slots for all services
-        if (empty($commonPeriods)) {
+        if (empty($filteredPeriods)) {
             return [];
         }
 
@@ -588,8 +596,8 @@ class SlotGeneratorService
                     'date' => $targetDate->format('Y-m-d'),
                     'day_of_week' => $targetDate->format('l'),
                     'day_of_week_short' => $targetDate->format('D'),
-                    'slots' => $commonPeriods,
-                    'has_available_slots' => !empty($commonPeriods),
+                    'slots' => $filteredPeriods,
+                    'has_available_slots' => !empty($filteredPeriods),
                 ],
             ],
         ];
