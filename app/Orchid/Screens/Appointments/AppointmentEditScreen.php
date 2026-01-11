@@ -25,14 +25,17 @@ class AppointmentEditScreen extends Screen
      *
      * @return array
      */
-    public function query(?Appointment $appointment = null): iterable
+    public function query(Appointment $appointment = null): iterable
     {
         if ($appointment === null) {
             $appointment = new Appointment();
         }
 
         $this->appointment = $appointment;
-        $appointment->load(['service', 'participants']);
+        
+        if ($appointment->exists) {
+            $appointment->load(['service', 'participants']);
+        }
 
         return [
             'appointment' => $appointment,
