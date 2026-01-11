@@ -8,12 +8,10 @@ use App\Models\ServiceConfiguration;
 use App\Models\ServiceSchedule;
 use App\Models\ServiceBreak;
 use Carbon\Carbon;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class CalendarApiTest extends TestCase
 {
-    use RefreshDatabase;
 
     protected function setUp(): void
     {
