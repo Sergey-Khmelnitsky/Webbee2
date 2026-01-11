@@ -564,9 +564,9 @@ class SlotGeneratorService
             }
         }
 
-        // Use minimum duration and break for common slots
+        // Use maximum duration (longest service) and minimum break for common slots
         $allConfigs = array_column($serviceConfigs, 'config');
-        $minDuration = min(array_map(fn($c) => $c->duration_minutes, $allConfigs));
+        $maxDuration = max(array_map(fn($c) => $c->duration_minutes, $allConfigs));
         $minBreak = min(array_map(fn($c) => $c->break_between_minutes, $allConfigs));
         $minMaxClients = min(array_map(fn($c) => $c->max_concurrent_clients, $allConfigs));
         $minAdvanceDays = min(array_map(fn($c) => $c->booking_advance_days, $allConfigs));
@@ -587,7 +587,7 @@ class SlotGeneratorService
                 'service_ids' => $serviceIds, // All IDs including duplicates
                 'services' => $serviceInfo,
                 'configuration' => [
-                    'duration_minutes' => $minDuration,
+                    'duration_minutes' => $maxDuration,
                     'break_between_minutes' => $minBreak,
                     'max_concurrent_clients' => $minMaxClients,
                     'booking_advance_days' => $minAdvanceDays,
@@ -788,13 +788,14 @@ class SlotGeneratorService
             return [];
         }
 
-        // Find minimum duration and break_between from all services
-        $minDuration = min(array_map(fn($sc) => $sc['config']->duration_minutes, $serviceConfigs));
+        // Use maximum duration (longest service) to ensure all services can fit
+        // Use minimum break_between from all services
+        $maxDuration = max(array_map(fn($sc) => $sc['config']->duration_minutes, $serviceConfigs));
         $minBreak = min(array_map(fn($sc) => $sc['config']->break_between_minutes, $serviceConfigs));
 
         $commonPeriods = [];
         foreach ($commonRanges as $range) {
-            $slots = $this->generateSlotsInRange($range, $minDuration, $minBreak);
+            $slots = $this->generateSlotsInRange($range, $maxDuration, $minBreak);
             $commonPeriods = array_merge($commonPeriods, $slots);
         }
 
