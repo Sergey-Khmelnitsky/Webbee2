@@ -653,33 +653,31 @@ class SlotGeneratorService
             return $serviceSlots[0];
         }
 
-        // Different services: find exact matching slots across all service instances
-        // A slot is common if it exists in ALL service instances with exact start_time and end_time match
-        $firstServiceSlots = $serviceSlots[0];
-        $commonSlots = [];
+        // Different services: convert slots to time ranges, find intersection, then generate common slots
+        // This is needed because different services may have different durations and intervals
+        $allRanges = [];
+        foreach ($serviceSlots as $slots) {
+            $ranges = [];
+            foreach ($slots as $slot) {
+                $start = Carbon::parse($date->format('Y-m-d') . ' ' . $slot['start_time']);
+                $end = Carbon::parse($date->format('Y-m-d') . ' ' . $slot['end_time']);
+                $ranges[] = ['start' => $start, 'end' => $end];
+            }
+            $allRanges[] = $ranges;
+        }
 
-        foreach ($firstServiceSlots as $slot) {
-            $isCommon = true;
-            
-            // Check if this slot exists in all other service instances
-            for ($i = 1; $i < count($serviceSlots); $i++) {
-                $found = false;
-                foreach ($serviceSlots[$i] as $otherSlot) {
-                    if ($slot['start_time'] === $otherSlot['start_time'] && 
-                        $slot['end_time'] === $otherSlot['end_time']) {
-                        $found = true;
-                        break;
-                    }
-                }
-                if (!$found) {
-                    $isCommon = false;
-                    break;
-                }
-            }
-            
-            if ($isCommon) {
-                $commonSlots[] = $slot;
-            }
+        // Find intersection of all ranges
+        $commonRanges = $this->findIntersectionOfRanges($allRanges);
+
+        // Generate slots from common ranges using maximum duration and minimum slot interval
+        $maxDuration = max(array_map(fn($sc) => $sc['config']->duration_minutes, $serviceConfigs));
+        $slotIntervals = array_map(fn($sc) => $this->getSlotInterval($sc['config']), $serviceConfigs);
+        $minSlotInterval = min($slotIntervals);
+
+        $commonSlots = [];
+        foreach ($commonRanges as $range) {
+            $slots = $this->generateSlotsInRange($range, $maxDuration, $minSlotInterval);
+            $commonSlots = array_merge($commonSlots, $slots);
         }
 
         return $commonSlots;
