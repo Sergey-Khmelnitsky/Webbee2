@@ -23,11 +23,6 @@ class BookingRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'service_id' => [
-                'required',
-                'integer',
-                Rule::exists('services', 'id')->where('is_active', true),
-            ],
             'date' => [
                 'required',
                 'date',
@@ -45,26 +40,36 @@ class BookingRequest extends FormRequest
                 'date_format:Y-m-d H:i:s',
                 'after:start_time',
             ],
-            'participants' => [
+            'bookings' => [
                 'required',
                 'array',
-                'size:1', // Exactly one participant
+                'min:1', // At least one booking
             ],
-            'participants.*.first_name' => [
+            'bookings.*.service_id' => [
+                'required',
+                'integer',
+                Rule::exists('services', 'id')->where('is_active', true),
+            ],
+            'bookings.*.participants' => [
+                'required',
+                'array',
+                'min:1', // At least one participant per booking
+            ],
+            'bookings.*.participants.*.first_name' => [
                 'required',
                 'string',
                 'min:1',
                 'max:255',
                 'regex:/^[\p{L}\s\-\']+$/u', // Allow letters, spaces, hyphens, apostrophes
             ],
-            'participants.*.last_name' => [
+            'bookings.*.participants.*.last_name' => [
                 'required',
                 'string',
                 'min:1',
                 'max:255',
                 'regex:/^[\p{L}\s\-\']+$/u',
             ],
-            'participants.*.email' => [
+            'bookings.*.participants.*.email' => [
                 'required',
                 'email:rfc,dns', // Strict email validation
                 'max:255',
@@ -80,8 +85,6 @@ class BookingRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'service_id.required' => 'Service ID is required.',
-            'service_id.exists' => 'The selected service does not exist or is not active.',
             'date.required' => 'Date is required.',
             'date.date_format' => 'Date must be in Y-m-d format (e.g., 2026-01-15).',
             'date.after_or_equal' => 'Date cannot be in the past.',
@@ -90,14 +93,16 @@ class BookingRequest extends FormRequest
             'end_time.required' => 'End time is required.',
             'end_time.date_format' => 'End time must be in Y-m-d H:i:s format (e.g., 2026-01-15 10:30:00).',
             'end_time.after' => 'End time must be after start time.',
-            'participants.required' => 'At least one participant is required.',
-            'participants.size' => 'Exactly one participant is required per appointment.',
-            'participants.*.first_name.required' => 'First name is required for all participants.',
-            'participants.*.first_name.regex' => 'First name can only contain letters, spaces, hyphens, and apostrophes.',
-            'participants.*.last_name.required' => 'Last name is required for all participants.',
-            'participants.*.last_name.regex' => 'Last name can only contain letters, spaces, hyphens, and apostrophes.',
-            'participants.*.email.required' => 'Email is required for all participants.',
-            'participants.*.email.email' => 'Please provide a valid email address.',
+            'bookings.required' => 'At least one booking is required.',
+            'bookings.*.service_id.required' => 'Service ID is required for each booking.',
+            'bookings.*.service_id.exists' => 'One or more selected services do not exist or are not active.',
+            'bookings.*.participants.required' => 'At least one participant is required for each booking.',
+            'bookings.*.participants.*.first_name.required' => 'First name is required for all participants.',
+            'bookings.*.participants.*.first_name.regex' => 'First name can only contain letters, spaces, hyphens, and apostrophes.',
+            'bookings.*.participants.*.last_name.required' => 'Last name is required for all participants.',
+            'bookings.*.participants.*.last_name.regex' => 'Last name can only contain letters, spaces, hyphens, and apostrophes.',
+            'bookings.*.participants.*.email.required' => 'Email is required for all participants.',
+            'bookings.*.participants.*.email.email' => 'Please provide a valid email address.',
         ];
     }
 

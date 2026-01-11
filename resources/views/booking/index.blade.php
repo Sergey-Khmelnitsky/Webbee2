@@ -635,33 +635,30 @@
                 return;
             }
 
-            // Create a separate booking request for each participant
-            // Each appointment can only have one participant
-            const bookingPromises = participants.map(participant => {
-                const bookingData = {
-                    service_id: participant.service_id,
-                    date: date,
-                    start_time: `${date} ${slotStart}:00`,
-                    end_time: `${date} ${slotEnd}:00`,
-                    participants: [{
-                        first_name: participant.first_name,
-                        last_name: participant.last_name,
-                        email: participant.email
-                    }]
-                };
-
-                return fetch('/api/bookings', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
-                    },
-                    body: JSON.stringify(bookingData)
-                }).then(async res => {
-                    const data = await res.json();
-                    return { status: res.status, data: data };
+            // Group participants by service_id
+            const bookingsByService = {};
+            participants.forEach(participant => {
+                const serviceId = participant.service_id;
+                if (!bookingsByService[serviceId]) {
+                    bookingsByService[serviceId] = {
+                        service_id: serviceId,
+                        participants: []
+                    };
+                }
+                bookingsByService[serviceId].participants.push({
+                    first_name: participant.first_name,
+                    last_name: participant.last_name,
+                    email: participant.email
                 });
             });
+
+            // Prepare single request with all bookings
+            const bookingRequest = {
+                date: date,
+                start_time: `${date} ${slotStart}:00`,
+                end_time: `${date} ${slotEnd}:00`,
+                bookings: Object.values(bookingsByService)
+            };
 
             // Disable submit button
             const submitBtn = document.getElementById('submitBookingBtn');
@@ -669,17 +666,29 @@
             submitBtn.textContent = 'Booking...';
 
             try {
-                const results = await Promise.all(bookingPromises);
+                // Send single request with all bookings
+                const response = await fetch('/api/bookings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+                    },
+                    body: JSON.stringify(bookingRequest)
+                });
+
+                const result = await response.json();
                 
-                const errors = results.filter(r => !r.data.success || r.status >= 400);
-                if (errors.length > 0) {
-                    const errorMessages = errors.map(e => e.data.message || 'Booking failed').join('; ');
-                    showModalError(errorMessages);
-                } else {
-                    alert('All appointments booked successfully!');
+                if (result.success) {
+                    alert(result.message || 'All appointments booked successfully!');
                     closeBookingModal();
                     // Reload the calendar
                     document.getElementById('bookingForm').dispatchEvent(new Event('submit'));
+                } else {
+                    let errorMessage = result.message || 'Booking failed';
+                    if (result.errors && result.errors.length > 0) {
+                        errorMessage += '\n\nErrors:\n' + result.errors.join('\n');
+                    }
+                    showModalError(errorMessage);
                 }
             } catch (error) {
                 console.error('Error booking appointments:', error);

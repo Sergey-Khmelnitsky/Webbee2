@@ -16,7 +16,8 @@ class BookingController extends Controller
     }
 
     /**
-     * Create a new booking
+     * Create new bookings
+     * Accepts multiple bookings with different services and participants
      * 
      * @param BookingRequest $request
      * @return JsonResponse
@@ -26,34 +27,35 @@ class BookingController extends Controller
         $validated = $request->validated();
 
         Log::info('Booking request received', [
-            'service_id' => $validated['service_id'],
             'date' => $validated['date'],
             'start_time' => $validated['start_time'],
             'end_time' => $validated['end_time'],
-            'participants_count' => count($validated['participants']),
+            'bookings_count' => count($validated['bookings']),
         ]);
 
-        // Create booking using service
-        $result = $this->bookingService->createBooking($validated);
+        // Create bookings using service
+        $result = $this->bookingService->createBookings($validated);
 
         if ($result['success']) {
             return response()->json([
                 'success' => true,
                 'message' => $result['message'],
                 'data' => [
-                    'appointment' => [
-                        'id' => $result['appointment']->id,
-                        'service_id' => $result['appointment']->service_id,
-                        'service_name' => $result['appointment']->service->name,
-                        'start_time' => $result['appointment']->start_time->toIso8601String(),
-                        'end_time' => $result['appointment']->end_time->toIso8601String(),
-                        'status' => $result['appointment']->status,
-                        'participant' => [
-                            'first_name' => $result['appointment']->participants->first()->first_name,
-                            'last_name' => $result['appointment']->participants->first()->last_name,
-                            'email' => $result['appointment']->participants->first()->email,
-                        ],
-                    ],
+                    'appointments' => array_map(function ($appointment) {
+                        return [
+                            'id' => $appointment->id,
+                            'service_id' => $appointment->service_id,
+                            'service_name' => $appointment->service->name,
+                            'start_time' => $appointment->start_time->toIso8601String(),
+                            'end_time' => $appointment->end_time->toIso8601String(),
+                            'status' => $appointment->status,
+                            'participant' => [
+                                'first_name' => $appointment->participants->first()->first_name,
+                                'last_name' => $appointment->participants->first()->last_name,
+                                'email' => $appointment->participants->first()->email,
+                            ],
+                        ];
+                    }, $result['appointments']),
                 ],
             ], 201);
         }
@@ -61,6 +63,7 @@ class BookingController extends Controller
         return response()->json([
             'success' => false,
             'message' => $result['message'],
+            'errors' => $result['errors'] ?? [],
         ], 400);
     }
 }

@@ -17,150 +17,152 @@ class BookingService
     }
 
     /**
-     * Validate and create a booking
+     * Validate and create multiple bookings
+     * Each booking is validated separately for its service and participants
      * 
-     * @param array $bookingData
-     * @return array ['success' => bool, 'appointment' => Appointment|null, 'message' => string]
+     * @param array $bookingData Contains: date, start_time, end_time, bookings[]
+     * @return array ['success' => bool, 'appointments' => Appointment[]|null, 'message' => string, 'errors' => array]
      */
-    public function createBooking(array $bookingData): array
+    public function createBookings(array $bookingData): array
     {
         try {
             DB::beginTransaction();
 
-            // Extract data
-            $serviceId = $bookingData['service_id'];
+            // Extract common data
             $date = Carbon::parse($bookingData['date']);
             $startTime = Carbon::parse($bookingData['start_time']);
             $endTime = Carbon::parse($bookingData['end_time']);
-            $participants = $bookingData['participants'];
+            $bookings = $bookingData['bookings'];
 
-            // Load service with relations
-            $service = Service::with(['configuration', 'schedules', 'breaks', 'holidays'])
-                ->where('id', $serviceId)
-                ->where('is_active', true)
-                ->first();
+            $createdAppointments = [];
+            $errors = [];
 
-            if (!$service) {
+            // Validate and create each booking separately
+            foreach ($bookings as $index => $booking) {
+                $serviceId = $booking['service_id'];
+                $participants = $booking['participants'];
+
+                // Validate service
+                $service = Service::with(['configuration', 'schedules', 'breaks', 'holidays'])
+                    ->where('id', $serviceId)
+                    ->where('is_active', true)
+                    ->first();
+
+                if (!$service) {
+                    $errors[] = "Booking #{$index}: Service not found or inactive";
+                    continue;
+                }
+
+                $config = $service->configuration;
+                if (!$config) {
+                    $errors[] = "Booking #{$index}: Service configuration not found";
+                    continue;
+                }
+
+                // Validate date for this service
+                if (!$this->isDateValidForBooking($date, $config)) {
+                    $errors[] = "Booking #{$index}: Date is outside booking advance days or in the past";
+                    continue;
+                }
+
+                // Check if holiday for this service
+                if ($this->isHoliday($service, $date)) {
+                    $errors[] = "Booking #{$index}: Booking is not available on this date (holiday)";
+                    continue;
+                }
+
+                // Validate time slot for this service
+                $validationResult = $this->validateTimeSlot($service, $date, $startTime, $endTime, $config);
+                if (!$validationResult['valid']) {
+                    $errors[] = "Booking #{$index}: {$validationResult['message']}";
+                    continue;
+                }
+
+                // Validate duration matches configuration for this service
+                $actualDuration = $startTime->diffInMinutes($endTime);
+                if ($actualDuration != $config->duration_minutes) {
+                    $errors[] = "Booking #{$index}: Appointment duration must be {$config->duration_minutes} minutes";
+                    continue;
+                }
+
+                // Validate and create appointment for each participant
+                foreach ($participants as $participantIndex => $participantData) {
+                    // Validate participant data
+                    $participantValidation = $this->validateParticipant($participantData);
+                    if (!$participantValidation['valid']) {
+                        $errors[] = "Booking #{$index}, Participant #{$participantIndex}: {$participantValidation['message']}";
+                        continue;
+                    }
+
+                    // Check if slot has capacity for this service
+                    $existingBookingsCount = $this->countExistingBookings($service, $startTime, $endTime);
+                    if ($existingBookingsCount >= $config->max_concurrent_clients) {
+                        $errors[] = "Booking #{$index}, Participant #{$participantIndex}: This time slot is fully booked for this service";
+                        continue;
+                    }
+
+                    // Create appointment
+                    $appointment = Appointment::create([
+                        'service_id' => $service->id,
+                        'start_time' => $startTime,
+                        'end_time' => $endTime,
+                        'status' => 'pending',
+                        'notes' => null,
+                    ]);
+
+                    // Create participant (use trimmed and validated data)
+                    AppointmentParticipant::create([
+                        'appointment_id' => $appointment->id,
+                        'first_name' => trim($participantData['first_name']),
+                        'last_name' => trim($participantData['last_name']),
+                        'email' => trim($participantData['email']),
+                    ]);
+
+                    $createdAppointments[] = $appointment->load(['service', 'participants']);
+                }
+            }
+
+            // If there are errors but some appointments were created, rollback everything
+            if (!empty($errors) && !empty($createdAppointments)) {
+                DB::rollBack();
                 return [
                     'success' => false,
-                    'appointment' => null,
-                    'message' => 'Service not found or inactive',
+                    'appointments' => null,
+                    'message' => 'Some bookings failed validation. All bookings were cancelled.',
+                    'errors' => $errors,
                 ];
             }
 
-            $config = $service->configuration;
-            if (!$config) {
+            // If all failed
+            if (!empty($errors) && empty($createdAppointments)) {
+                DB::rollBack();
                 return [
                     'success' => false,
-                    'appointment' => null,
-                    'message' => 'Service configuration not found',
+                    'appointments' => null,
+                    'message' => 'All bookings failed validation.',
+                    'errors' => $errors,
                 ];
             }
-
-            // Validate date
-            if (!$this->isDateValidForBooking($date, $config)) {
-                return [
-                    'success' => false,
-                    'appointment' => null,
-                    'message' => 'Date is outside booking advance days or in the past',
-                ];
-            }
-
-            // Check if holiday
-            if ($this->isHoliday($service, $date)) {
-                return [
-                    'success' => false,
-                    'appointment' => null,
-                    'message' => 'Booking is not available on this date (holiday)',
-                ];
-            }
-
-            // Validate time slot
-            $validationResult = $this->validateTimeSlot($service, $date, $startTime, $endTime, $config);
-            if (!$validationResult['valid']) {
-                return [
-                    'success' => false,
-                    'appointment' => null,
-                    'message' => $validationResult['message'],
-                ];
-            }
-
-            // Check if slot is fully booked
-            $existingBookingsCount = $this->countExistingBookings($service, $startTime, $endTime);
-            if ($existingBookingsCount >= $config->max_concurrent_clients) {
-                return [
-                    'success' => false,
-                    'appointment' => null,
-                    'message' => 'This time slot is fully booked',
-                ];
-            }
-
-            // Validate duration matches configuration
-            $actualDuration = $startTime->diffInMinutes($endTime);
-            if ($actualDuration != $config->duration_minutes) {
-                return [
-                    'success' => false,
-                    'appointment' => null,
-                    'message' => "Appointment duration must be {$config->duration_minutes} minutes",
-                ];
-            }
-
-            // Validate participants count (only 1 participant per appointment)
-            if (count($participants) !== 1) {
-                return [
-                    'success' => false,
-                    'appointment' => null,
-                    'message' => 'Each appointment must have exactly one participant',
-                ];
-            }
-
-            // Validate participant data
-            $participantData = $participants[0];
-            $participantValidation = $this->validateParticipant($participantData);
-            if (!$participantValidation['valid']) {
-                return [
-                    'success' => false,
-                    'appointment' => null,
-                    'message' => $participantValidation['message'],
-                ];
-            }
-
-            // Create appointment
-            $appointment = Appointment::create([
-                'service_id' => $service->id,
-                'start_time' => $startTime,
-                'end_time' => $endTime,
-                'status' => 'pending',
-                'notes' => null,
-            ]);
-
-            // Create participant (use trimmed and validated data)
-            AppointmentParticipant::create([
-                'appointment_id' => $appointment->id,
-                'first_name' => trim($participantData['first_name']),
-                'last_name' => trim($participantData['last_name']),
-                'email' => trim($participantData['email']),
-            ]);
 
             DB::commit();
 
-            Log::info('Booking created successfully', [
-                'appointment_id' => $appointment->id,
-                'service_id' => $service->id,
+            Log::info('Bookings created successfully', [
+                'appointments_count' => count($createdAppointments),
+                'date' => $date->format('Y-m-d'),
                 'start_time' => $startTime->format('Y-m-d H:i:s'),
-                'end_time' => $endTime->format('Y-m-d H:i:s'),
             ]);
 
             return [
                 'success' => true,
-                'appointment' => $appointment->load(['service', 'participants']),
-                'message' => 'Appointment booked successfully',
+                'appointments' => $createdAppointments,
+                'message' => count($createdAppointments) . ' appointment(s) booked successfully',
+                'errors' => [],
             ];
 
         } catch (\Exception $e) {
             DB::rollBack();
             
-            Log::error('Booking creation failed', [
+            Log::error('Bookings creation failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'booking_data' => $bookingData,
@@ -168,8 +170,9 @@ class BookingService
 
             return [
                 'success' => false,
-                'appointment' => null,
-                'message' => 'An error occurred while creating the booking. Please try again.',
+                'appointments' => null,
+                'message' => 'An error occurred while creating the bookings. Please try again.',
+                'errors' => [],
             ];
         }
     }
