@@ -41,14 +41,14 @@ class CalendarController extends Controller
             'service_ids' => $serviceIds,
         ]);
 
-        // If multiple services, find common slots
-        if (count($serviceIds) > 1) {
-            $calendarData = $this->slotGenerator->getCommonSlotsForServices($date, $serviceIds);
-        } else {
-            // Single service or all services
-            $serviceId = !empty($serviceIds) ? $serviceIds[0] : null;
-            $calendarData = $this->slotGenerator->getCalendarDataForDate($date, $serviceId);
+        // Always use getCommonSlotsForServices for consistency
+        // It works for single service, multiple services, or empty array (all services)
+        if (empty($serviceIds)) {
+            // If no service_ids provided, get all active services
+            $serviceIds = \App\Models\Service::where('is_active', true)->pluck('id')->toArray();
         }
+        
+        $calendarData = $this->slotGenerator->getCommonSlotsForServices($date, $serviceIds);
 
         \Log::info('Calendar API Response', [
             'date' => $date,
