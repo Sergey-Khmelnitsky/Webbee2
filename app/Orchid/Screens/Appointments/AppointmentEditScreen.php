@@ -120,18 +120,28 @@ class AppointmentEditScreen extends Screen
     }
 
     /**
-     * Save appointment
+     * Save appointment (for editing existing)
      */
-    public function save(Request $request, ?Appointment $appointment = null): \Illuminate\Http\RedirectResponse
+    public function save(Appointment $appointment, Request $request): \Illuminate\Http\RedirectResponse
     {
-        if ($appointment === null) {
-            $appointment = new Appointment();
-        }
-
         $appointment->fill($request->get('appointment'));
         $appointment->save();
 
         Toast::info('Appointment saved.');
+
+        return redirect()->route('platform.systems.appointments');
+    }
+
+    /**
+     * Create new appointment (for creating new)
+     */
+    public function create(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        $appointment = new Appointment();
+        $appointment->fill($request->get('appointment'));
+        $appointment->save();
+
+        Toast::info('Appointment created.');
 
         return redirect()->route('platform.systems.appointments');
     }
