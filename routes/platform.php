@@ -88,19 +88,19 @@ Route::screen('roles', RoleListScreen::class)
         ->parent('platform.index')
         ->push(__('Roles'), route('platform.systems.roles')));
 
-// Platform > System > Appointments > Appointment
-Route::screen('appointments/{appointment}/edit', AppointmentEditScreen::class)
-    ->name('platform.systems.appointments.edit')
-    ->breadcrumbs(fn (Trail $trail, $appointment) => $trail
-        ->parent('platform.systems.appointments')
-        ->push('Edit Appointment', route('platform.systems.appointments.edit', $appointment)));
-
 // Platform > System > Appointments > Create
 Route::screen('appointments/create', AppointmentEditScreen::class)
     ->name('platform.systems.appointments.create')
     ->breadcrumbs(fn (Trail $trail) => $trail
         ->parent('platform.systems.appointments')
         ->push('Create', route('platform.systems.appointments.create')));
+
+// Platform > System > Appointments > Appointment
+Route::screen('appointments/{appointment}/edit', AppointmentEditScreen::class)
+    ->name('platform.systems.appointments.edit')
+    ->breadcrumbs(fn (Trail $trail, $appointment) => $trail
+        ->parent('platform.systems.appointments')
+        ->push('Edit Appointment', route('platform.systems.appointments.edit', $appointment)));
 
 // Platform > System > Appointments
 Route::screen('appointments', AppointmentListScreen::class)
