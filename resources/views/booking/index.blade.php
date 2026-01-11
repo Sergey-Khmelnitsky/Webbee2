@@ -309,7 +309,7 @@
                 
                 const slotsTitle = document.createElement('h3');
                 slotsTitle.className = 'text-lg font-semibold text-gray-900 mb-4';
-                slotsTitle.textContent = 'Available Time Periods';
+                slotsTitle.textContent = 'Available Time Slots';
                 slotsDiv.appendChild(slotsTitle);
 
                 const slotsGrid = document.createElement('div');
@@ -368,53 +368,38 @@
         let currentServiceData = null;
         let currentSelectedDate = null;
 
-        function openBookingModal(period, serviceData, selectedDate) {
-            currentPeriod = period;
+        function openBookingModal(slot, serviceData, selectedDate) {
+            currentPeriod = slot; // Now it's a slot, not a period
             currentServiceData = serviceData;
             currentSelectedDate = selectedDate;
 
             // Set hidden fields
             document.getElementById('modalDate').value = selectedDate;
 
-            // Calculate available slots in this period using maximum duration
-            const maxDuration = serviceData.configuration.duration_minutes;
-            const minBreak = serviceData.configuration.break_between_minutes;
-            const slots = calculateSlotsInPeriod(
-                period.start_time,
-                period.end_time,
-                maxDuration,
-                minBreak
-            );
-
-            // Populate time slots list
+            // Slot is already selected from backend, just show it
             const slotsList = document.getElementById('timeSlotsList');
             slotsList.innerHTML = '';
 
-            if (slots.length === 0) {
-                slotsList.innerHTML = '<p class="text-gray-500 text-sm">No available slots in this period</p>';
-            } else {
-                slots.forEach((slot, index) => {
-                    const slotDiv = document.createElement('div');
-                    slotDiv.className = 'flex items-center p-2 border border-gray-200 rounded hover:bg-gray-50 cursor-pointer';
-                    
-                    const radio = document.createElement('input');
-                    radio.type = 'radio';
-                    radio.name = 'time_slot';
-                    radio.id = `slot_${index}`;
-                    radio.value = `${slot.start}-${slot.end}`;
-                    radio.required = true;
-                    radio.className = 'mr-3';
+            const slotDiv = document.createElement('div');
+            slotDiv.className = 'flex items-center p-2 border border-gray-200 rounded bg-blue-50';
+            
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'time_slot';
+            radio.id = 'slot_0';
+            radio.value = `${slot.start_time}-${slot.end_time}`;
+            radio.checked = true; // Pre-selected
+            radio.required = true;
+            radio.className = 'mr-3';
 
-                    const label = document.createElement('label');
-                    label.htmlFor = `slot_${index}`;
-                    label.className = 'flex-1 cursor-pointer';
-                    label.textContent = `${formatTime(slot.start)} - ${formatTime(slot.end)}`;
+            const label = document.createElement('label');
+            label.htmlFor = 'slot_0';
+            label.className = 'flex-1 cursor-pointer font-medium';
+            label.textContent = `${formatTime(slot.start_time)} - ${formatTime(slot.end_time)}`;
 
-                    slotDiv.appendChild(radio);
-                    slotDiv.appendChild(label);
-                    slotsList.appendChild(slotDiv);
-                });
-            }
+            slotDiv.appendChild(radio);
+            slotDiv.appendChild(label);
+            slotsList.appendChild(slotDiv);
 
             // Generate participant forms for each service
             generateParticipantForms(serviceData);

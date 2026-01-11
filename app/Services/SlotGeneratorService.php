@@ -88,15 +88,16 @@ class SlotGeneratorService
         }, $mergedBlocked);
 
         $availablePeriods = $this->generateAvailablePeriods($mergedBlocked, $workStart, $workEnd, $config);
-        $debug['available_periods_before_filter'] = $availablePeriods;
+        $debug['available_periods'] = $availablePeriods;
         
-        $filtered = $this->filterValidPeriods($availablePeriods, $date, $config);
-        $debug['available_periods_after_filter'] = $filtered;
-        $debug['final_count'] = count($filtered);
+        // Generate individual slots from available periods
+        $slots = $this->generateSlotsFromPeriods($availablePeriods, $date, $config, $mergedBlocked, $appointmentPeriods);
+        $debug['slots_count'] = count($slots);
+        $debug['final_count'] = count($slots);
 
         \Log::info('SlotGenerator Debug', $debug);
         
-        return $filtered;
+        return $slots;
     }
 
     /**
@@ -403,6 +404,75 @@ class SlotGeneratorService
     }
 
     /**
+     * Generate individual slots from available periods
+     * Returns array of specific time slots (start_time, end_time) that are available for booking
+     * 
+     * @param array $availablePeriods Array of periods with start_time and end_time
+     * @param Carbon $date Target date
+     * @param $config ServiceConfiguration
+     * @param array $mergedBlocked Array of blocked periods
+     * @param array $appointmentPeriods Array of existing appointment periods
+     * @return array Array of slots with start_time and end_time
+     */
+    private function generateSlotsFromPeriods(array $availablePeriods, Carbon $date, $config, array $mergedBlocked, array $appointmentPeriods): array
+    {
+        $slots = [];
+        $slotInterval = $this->getSlotInterval($config);
+        
+        foreach ($availablePeriods as $period) {
+            $periodStart = Carbon::parse($date->format('Y-m-d') . ' ' . $period['start_time']);
+            $periodEnd = Carbon::parse($date->format('Y-m-d') . ' ' . $period['end_time']);
+            
+            // Generate slots within this period
+            $currentSlotStart = $periodStart->copy();
+            
+            while ($currentSlotStart->copy()->addMinutes($config->duration_minutes)->lte($periodEnd)) {
+                $slotEnd = $currentSlotStart->copy()->addMinutes($config->duration_minutes);
+                
+                // Check if slot is valid (not in blocked period, has capacity)
+                if ($this->isSlotValid($currentSlotStart, $slotEnd, $mergedBlocked, $appointmentPeriods, $config)) {
+                    $slots[] = [
+                        'start_time' => $currentSlotStart->format('H:i'),
+                        'end_time' => $slotEnd->format('H:i'),
+                    ];
+                }
+                
+                $currentSlotStart->addMinutes($slotInterval);
+            }
+        }
+        
+        return $slots;
+    }
+
+    /**
+     * Check if a slot is valid for booking
+     * 
+     * @param Carbon $slotStart Slot start time
+     * @param Carbon $slotEnd Slot end time
+     * @param array $mergedBlocked Array of blocked periods
+     * @param array $appointmentPeriods Array of existing appointment periods
+     * @param $config ServiceConfiguration
+     * @return bool True if slot is valid
+     */
+    private function isSlotValid(Carbon $slotStart, Carbon $slotEnd, array $mergedBlocked, array $appointmentPeriods, $config): bool
+    {
+        // Check if slot overlaps with any blocked period
+        foreach ($mergedBlocked as $blocked) {
+            if ($slotStart->lt($blocked['end']) && $slotEnd->gt($blocked['start'])) {
+                return false;
+            }
+        }
+        
+        // Check if slot has available capacity
+        $bookedCount = $this->countBookingsForSlot($appointmentPeriods, $slotStart, $slotEnd);
+        if ($bookedCount >= $config->max_concurrent_clients) {
+            return false;
+        }
+        
+        return true;
+    }
+
+    /**
      * Get common available slots for multiple services
      * Returns slots that are available for ALL specified services simultaneously
      * 
@@ -463,10 +533,10 @@ class SlotGeneratorService
                 continue;
             }
 
-            $periods = $this->generateAvailableSlots($service, $targetDate);
-            if (!empty($periods)) {
+            $slots = $this->generateAvailableSlots($service, $targetDate);
+            if (!empty($slots)) {
                 // Use service ID as key, but we'll process each instance separately
-                $servicePeriods[] = $periods;
+                $servicePeriods[] = $slots; // Now contains slots, not periods
                 $serviceConfigs[] = [
                     'service' => $service,
                     'config' => $config,
@@ -479,19 +549,19 @@ class SlotGeneratorService
             return [];
         }
 
-        // Find intersection of all periods (including duplicates)
-        $commonPeriods = $this->findCommonPeriodsForInstances($servicePeriods, $serviceConfigs, $targetDate);
+        // Find common slots across all services (including duplicates)
+        $commonSlots = $this->findCommonSlotsForInstances($servicePeriods, $serviceConfigs, $targetDate);
 
         // Filter slots by max_concurrent_clients for each service
-        $filteredPeriods = $this->filterSlotsByMaxConcurrentClients(
-            $commonPeriods, 
+        $filteredSlots = $this->filterSlotsByMaxConcurrentClients(
+            $commonSlots, 
             $serviceCounts, 
             $services, 
             $targetDate
         );
 
         // Return single result with common slots for all services
-        if (empty($filteredPeriods)) {
+        if (empty($filteredSlots)) {
             return [];
         }
 
@@ -540,34 +610,34 @@ class SlotGeneratorService
                     'date' => $targetDate->format('Y-m-d'),
                     'day_of_week' => $targetDate->format('l'),
                     'day_of_week_short' => $targetDate->format('D'),
-                    'slots' => $filteredPeriods,
-                    'has_available_slots' => !empty($filteredPeriods),
+                    'slots' => $filteredSlots,
+                    'has_available_slots' => !empty($filteredSlots),
                 ],
             ],
         ];
     }
 
     /**
-     * Find common time periods across multiple service instances (including duplicates)
+     * Find common slots across multiple service instances (including duplicates)
      * 
-     * @param array $servicePeriods Array of [periods] for each service instance
+     * @param array $serviceSlots Array of [slots] for each service instance (each slot has start_time, end_time)
      * @param array $serviceConfigs Array of [service, config, service_id] for each instance
      * @param Carbon $date
-     * @return array Common available periods
+     * @return array Common available slots
      */
-    private function findCommonPeriodsForInstances(array $servicePeriods, array $serviceConfigs, Carbon $date): array
+    private function findCommonSlotsForInstances(array $serviceSlots, array $serviceConfigs, Carbon $date): array
     {
-        if (empty($servicePeriods)) {
+        if (empty($serviceSlots)) {
             return [];
         }
 
-        // Convert periods to time ranges for easier comparison
+        // Convert slots to time ranges for easier comparison
         $allRanges = [];
-        foreach ($servicePeriods as $periods) {
+        foreach ($serviceSlots as $slots) {
             $ranges = [];
-            foreach ($periods as $period) {
-                $start = Carbon::parse($date->format('Y-m-d') . ' ' . $period['start_time']);
-                $end = Carbon::parse($date->format('Y-m-d') . ' ' . $period['end_time']);
+            foreach ($slots as $slot) {
+                $start = Carbon::parse($date->format('Y-m-d') . ' ' . $slot['start_time']);
+                $end = Carbon::parse($date->format('Y-m-d') . ' ' . $slot['end_time']);
                 $ranges[] = ['start' => $start, 'end' => $end];
             }
             $allRanges[] = $ranges;
@@ -576,11 +646,18 @@ class SlotGeneratorService
         // Find intersection of all ranges
         $commonRanges = $this->findIntersectionOfRanges($allRanges);
 
-        // Generate slots from common ranges
-        $commonPeriods = $this->generateSlotsFromRanges($commonRanges, $serviceConfigs);
+        // Generate slots from common ranges using maximum duration
+        $maxDuration = max(array_map(fn($sc) => $sc['config']->duration_minutes, $serviceConfigs));
+        $slotIntervals = array_map(fn($sc) => $this->getSlotInterval($sc['config']), $serviceConfigs);
+        $minSlotInterval = min($slotIntervals);
 
-        // Merge overlapping periods
-        return $this->mergePeriods($commonPeriods);
+        $commonSlots = [];
+        foreach ($commonRanges as $range) {
+            $slots = $this->generateSlotsInRange($range, $maxDuration, $minSlotInterval);
+            $commonSlots = array_merge($commonSlots, $slots);
+        }
+
+        return $commonSlots;
     }
 
     /**
@@ -764,100 +841,63 @@ class SlotGeneratorService
      * Filter slots by max_concurrent_clients for each service
      * Checks that each slot has enough capacity for all requested service instances
      * 
-     * @param array $periods Array of periods with start_time and end_time
+     * @param array $slots Array of slots with start_time and end_time
      * @param array $serviceCounts Array of [service_id => count]
      * @param \Illuminate\Database\Eloquent\Collection $services Collection of Service models
      * @param Carbon $date
-     * @return array Filtered periods (only periods where at least one slot has capacity)
+     * @return array Filtered slots (only slots that have capacity for all services)
      */
     private function filterSlotsByMaxConcurrentClients(
-        array $periods, 
+        array $slots, 
         array $serviceCounts, 
         $services, 
         Carbon $date
     ): array {
-        if (empty($periods)) {
+        if (empty($slots)) {
             return [];
         }
 
         $filtered = [];
         
-        foreach ($periods as $period) {
-            $periodStart = Carbon::parse($date->format('Y-m-d') . ' ' . $period['start_time']);
-            $periodEnd = Carbon::parse($date->format('Y-m-d') . ' ' . $period['end_time']);
+        foreach ($slots as $slot) {
+            $slotStart = Carbon::parse($date->format('Y-m-d') . ' ' . $slot['start_time']);
+            $slotEnd = Carbon::parse($date->format('Y-m-d') . ' ' . $slot['end_time']);
             
-            // Find maximum duration (longest service) and minimum slot interval from all services
-            $maxDuration = null;
-            $slotIntervals = [];
-            foreach ($serviceCounts as $serviceId => $count) {
-                if (isset($services[$serviceId])) {
-                    $config = $services[$serviceId]->configuration;
-                    if ($config) {
-                        if ($maxDuration === null || $config->duration_minutes > $maxDuration) {
-                            $maxDuration = $config->duration_minutes;
-                        }
-                        $slotIntervals[] = $this->getSlotInterval($config);
-                    }
+            // Check if this specific slot has capacity for all requested services
+            $slotHasCapacity = true;
+            
+            foreach ($serviceCounts as $serviceId => $requestedCount) {
+                if (!isset($services[$serviceId])) {
+                    $slotHasCapacity = false;
+                    break;
+                }
+                
+                $service = $services[$serviceId];
+                $config = $service->configuration;
+                
+                if (!$config) {
+                    $slotHasCapacity = false;
+                    break;
+                }
+                
+                // Count existing bookings for this service at this exact time slot
+                $existingBookings = Appointment::where('service_id', $serviceId)
+                    ->where('start_time', $slotStart)
+                    ->whereNull('deleted_at')
+                    ->count();
+                
+                // Check if there's enough capacity
+                $availableCapacity = $config->max_concurrent_clients - $existingBookings;
+                
+                if ($availableCapacity < $requestedCount) {
+                    $slotHasCapacity = false;
+                    break;
                 }
             }
             
-            if ($maxDuration === null || empty($slotIntervals)) {
-                continue;
-            }
-            
-            // Use minimum slot interval from all services
-            $minSlotInterval = min($slotIntervals);
-            
-            // Generate all possible slots in this period using maximum duration
-            $currentSlotStart = $periodStart->copy();
-            $hasAvailableSlot = false;
-            
-            while ($currentSlotStart->copy()->addMinutes($maxDuration)->lte($periodEnd)) {
-                $slotEnd = $currentSlotStart->copy()->addMinutes($maxDuration);
-                
-                // Check if this specific slot has capacity for all requested services
-                $slotHasCapacity = true;
-                
-                foreach ($serviceCounts as $serviceId => $requestedCount) {
-                    if (!isset($services[$serviceId])) {
-                        $slotHasCapacity = false;
-                        break;
-                    }
-                    
-                    $service = $services[$serviceId];
-                    $config = $service->configuration;
-                    
-                    if (!$config) {
-                        $slotHasCapacity = false;
-                        break;
-                    }
-                    
-                    // Count existing bookings for this service at this exact time slot
-                    $existingBookings = Appointment::where('service_id', $serviceId)
-                        ->where('start_time', $currentSlotStart)
-                        ->whereNull('deleted_at')
-                        ->count();
-                    
-                    // Check if there's enough capacity
-                    $availableCapacity = $config->max_concurrent_clients - $existingBookings;
-                    
-                    if ($availableCapacity < $requestedCount) {
-                        $slotHasCapacity = false;
-                        break;
-                    }
-                }
-                
-                if ($slotHasCapacity) {
-                    $hasAvailableSlot = true;
-                    break; // At least one slot in this period has capacity
-                }
-                
-                $currentSlotStart->addMinutes($minSlotInterval);
-            }
-            
-            // Only include period if it has at least one available slot
-            if ($hasAvailableSlot) {
-                $filtered[] = $period;
+            // Only include slot if it has capacity for all services
+            if ($slotHasCapacity) {
+                $filtered[] = $slot;
             }
         }
         
