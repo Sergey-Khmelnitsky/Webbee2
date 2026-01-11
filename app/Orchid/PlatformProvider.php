@@ -23,7 +23,7 @@ class PlatformProvider extends OrchidServiceProvider
     {
         parent::boot($dashboard);
 
-        // ...
+        $dashboard->registerResource('appointments', \App\Orchid\Screens\AppointmentListScreen::class);
     }
 
     /**
@@ -68,7 +68,7 @@ class PlatformProvider extends OrchidServiceProvider
 
             Menu::make('Записи на прием')
                 ->icon('bs.calendar')
-                ->route('platform.systems.appointment-list-screen')
+                ->route('platform.systems.appointments')
                 ->title('Бронирование'),
 
             Menu::make(__('Users'))
