@@ -597,25 +597,36 @@
             const date = formData.get('date');
 
             // Collect all participants with their service IDs
-            // Group by participant form (each form div contains one participant)
             const participants = [];
-            const participantForms = this.querySelectorAll('#participantsForms > div');
+            const participantInputs = this.querySelectorAll('input[name^="participants["]');
             
-            participantForms.forEach(formDiv => {
-                const serviceIdInput = formDiv.querySelector('input[name*="[service_id]"]');
-                const firstNameInput = formDiv.querySelector('input[name*="[first_name]"]');
-                const lastNameInput = formDiv.querySelector('input[name*="[last_name]"]');
-                const emailInput = formDiv.querySelector('input[name*="[email]"]');
-                
-                if (serviceIdInput && firstNameInput && lastNameInput && emailInput) {
-                    participants.push({
-                        service_id: parseInt(serviceIdInput.value),
-                        first_name: firstNameInput.value.trim(),
-                        last_name: lastNameInput.value.trim(),
-                        email: emailInput.value.trim()
-                    });
+            let currentParticipant = null;
+            participantInputs.forEach(input => {
+                const name = input.name;
+                if (name.includes('[service_id]')) {
+                    if (currentParticipant) {
+                        participants.push(currentParticipant);
+                    }
+                    currentParticipant = {
+                        service_id: parseInt(input.value)
+                    };
+                } else if (name.includes('[first_name]')) {
+                    if (currentParticipant) {
+                        currentParticipant.first_name = input.value;
+                    }
+                } else if (name.includes('[last_name]')) {
+                    if (currentParticipant) {
+                        currentParticipant.last_name = input.value;
+                    }
+                } else if (name.includes('[email]')) {
+                    if (currentParticipant) {
+                        currentParticipant.email = input.value;
+                    }
                 }
             });
+            if (currentParticipant) {
+                participants.push(currentParticipant);
+            }
 
             // Validate all participants
             const invalidParticipants = participants.filter(p => !p.first_name || !p.last_name || !p.email);
