@@ -23,7 +23,7 @@ class PlatformProvider extends OrchidServiceProvider
     {
         parent::boot($dashboard);
 
-        $dashboard->registerResource('appointments', \App\Orchid\Screens\AppointmentListScreen::class);
+        // ...
     }
 
     /**
