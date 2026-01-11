@@ -15,20 +15,22 @@
         <div class="bg-white rounded-lg shadow-md p-6 mb-6">
             <form id="bookingForm" class="space-y-4">
                 <div>
-                    <label for="service_id" class="block text-sm font-medium text-gray-700 mb-2">
-                        Select Service
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Select Services
                     </label>
-                    <select 
-                        id="service_id" 
-                        name="service_id" 
-                        required
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    <div id="servicesContainer" class="space-y-3">
+                        <!-- Service select fields will be added here -->
+                    </div>
+                    <button 
+                        type="button" 
+                        id="addServiceBtn"
+                        class="mt-2 flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium"
                     >
-                        <option value="">-- Select a service --</option>
-                        @foreach($services as $service)
-                            <option value="{{ $service->id }}">{{ $service->name }}</option>
-                        @endforeach
-                    </select>
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                        Add Service
+                    </button>
                 </div>
 
                 <div>
@@ -164,14 +166,100 @@
     </div>
 
     <script>
+        // Services data from backend
+        const servicesData = @json($services);
+        let serviceCounter = 0;
+
+        // Initialize with one service select
+        function initializeServices() {
+            addServiceSelect();
+        }
+
+        // Add a new service select field
+        function addServiceSelect(selectedServiceId = '') {
+            const container = document.getElementById('servicesContainer');
+            const serviceDiv = document.createElement('div');
+            serviceDiv.className = 'flex items-center gap-2';
+            serviceDiv.dataset.serviceIndex = serviceCounter++;
+
+            const select = document.createElement('select');
+            select.name = 'service_ids[]';
+            select.className = 'flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
+            select.required = true;
+
+            // Add default option
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = '-- Select a service --';
+            select.appendChild(defaultOption);
+
+            // Add services
+            servicesData.forEach(service => {
+                const option = document.createElement('option');
+                option.value = service.id;
+                option.textContent = service.name;
+                if (selectedServiceId && service.id == selectedServiceId) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
+
+            // Remove button (only show if more than one service)
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'text-red-600 hover:text-red-700 p-2 hidden';
+            removeBtn.innerHTML = `
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            `;
+            removeBtn.addEventListener('click', () => {
+                serviceDiv.remove();
+                updateRemoveButtons();
+            });
+
+            serviceDiv.appendChild(select);
+            serviceDiv.appendChild(removeBtn);
+            container.appendChild(serviceDiv);
+
+            updateRemoveButtons();
+        }
+
+        // Update remove buttons visibility
+        function updateRemoveButtons() {
+            const serviceSelects = document.querySelectorAll('#servicesContainer > div');
+            serviceSelects.forEach(div => {
+                const removeBtn = div.querySelector('button');
+                if (serviceSelects.length > 1) {
+                    removeBtn.classList.remove('hidden');
+                } else {
+                    removeBtn.classList.add('hidden');
+                }
+            });
+        }
+
+        // Add service button handler
+        document.getElementById('addServiceBtn').addEventListener('click', () => {
+            addServiceSelect();
+        });
+
+        // Initialize on page load
+        initializeServices();
+
+        // Form submission
         document.getElementById('bookingForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            const serviceId = document.getElementById('service_id').value;
+            // Get selected service IDs
+            const serviceSelects = document.querySelectorAll('select[name="service_ids[]"]');
+            const selectedServiceIds = Array.from(serviceSelects)
+                .map(select => select.value)
+                .filter(id => id !== '');
+
             const date = document.getElementById('date').value;
             
-            if (!serviceId || !date) {
-                showError('Please select both service and date');
+            if (selectedServiceIds.length === 0 || !date) {
+                showError('Please select at least one service and a date');
                 return;
             }
 
@@ -182,17 +270,29 @@
             document.getElementById('loadCalendarBtn').disabled = true;
 
             try {
-                const response = await fetch(`/api/calendar?date=${date}&service_id=${serviceId}`);
-                const data = await response.json();
+                // Load calendars for all selected services
+                const calendarPromises = selectedServiceIds.map(serviceId => 
+                    fetch(`/api/calendar?date=${date}&service_id=${serviceId}`)
+                        .then(res => res.json())
+                );
 
-                if (!response.ok) {
-                    throw new Error(data.message || 'Failed to load calendar');
+                const results = await Promise.all(calendarPromises);
+                
+                // Check for errors
+                const errors = results.filter(r => !r.success);
+                if (errors.length > 0) {
+                    throw new Error('Failed to load some calendars');
                 }
 
-                if (data.success && data.data && data.data.length > 0) {
-                    displayCalendar(data.data[0], date);
+                // Display calendars for all services
+                const calendarData = results
+                    .filter(r => r.success && r.data && r.data.length > 0)
+                    .map(r => r.data[0]);
+
+                if (calendarData.length > 0) {
+                    displayCalendars(calendarData, date);
                 } else {
-                    showError('No available slots found for the selected date');
+                    showError('No available slots found for the selected date and services');
                 }
             } catch (error) {
                 console.error('Error loading calendar:', error);
@@ -208,13 +308,29 @@
             document.getElementById('errorMessage').classList.remove('hidden');
         }
 
-        function displayCalendar(serviceData, selectedDate) {
+        function displayCalendars(calendarDataArray, selectedDate) {
             const container = document.getElementById('calendarContent');
             container.innerHTML = '';
+
+            calendarDataArray.forEach(serviceData => {
+                displayCalendar(serviceData, selectedDate, container);
+            });
+
+            document.getElementById('calendarContainer').classList.remove('hidden');
+        }
+
+        function displayCalendar(serviceData, selectedDate, container = null) {
+            if (!container) {
+                container = document.getElementById('calendarContent');
+            }
 
             const serviceName = serviceData.name;
             const dateInfo = serviceData.date;
             const slots = dateInfo.slots || [];
+
+            // Service section wrapper
+            const serviceSection = document.createElement('div');
+            serviceSection.className = 'mb-6';
 
             // Service info
             const serviceDiv = document.createElement('div');
@@ -225,7 +341,7 @@
                 <p class="text-gray-600 mb-1">Day: <span class="font-medium">${dateInfo.day_of_week}</span></p>
                 <p class="text-sm text-gray-500">Duration: ${serviceData.configuration.duration_minutes} minutes</p>
             `;
-            container.appendChild(serviceDiv);
+            serviceSection.appendChild(serviceDiv);
 
             // Available time periods
             if (slots.length > 0) {
@@ -255,15 +371,15 @@
                 });
 
                 slotsDiv.appendChild(slotsGrid);
-                container.appendChild(slotsDiv);
+                serviceSection.appendChild(slotsDiv);
             } else {
                 const noSlotsDiv = document.createElement('div');
                 noSlotsDiv.className = 'bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded';
                 noSlotsDiv.textContent = 'No available time slots for this date.';
-                container.appendChild(noSlotsDiv);
+                serviceSection.appendChild(noSlotsDiv);
             }
 
-            document.getElementById('calendarContainer').classList.remove('hidden');
+            container.appendChild(serviceSection);
         }
 
         function formatDate(dateString) {
