@@ -635,23 +635,31 @@
                 return;
             }
 
-            // Group participants by service_id and create bookings
-            const bookingsByService = {};
-            participants.forEach(participant => {
-                const serviceId = participant.service_id;
-                if (!bookingsByService[serviceId]) {
-                    bookingsByService[serviceId] = {
-                        service_id: serviceId,
-                        date: date,
-                        start_time: `${date} ${slotStart}:00`,
-                        end_time: `${date} ${slotEnd}:00`,
-                        participants: []
-                    };
-                }
-                bookingsByService[serviceId].participants.push({
-                    first_name: participant.first_name,
-                    last_name: participant.last_name,
-                    email: participant.email
+            // Create a separate booking request for each participant
+            // Each appointment can only have one participant
+            const bookingPromises = participants.map(participant => {
+                const bookingData = {
+                    service_id: participant.service_id,
+                    date: date,
+                    start_time: `${date} ${slotStart}:00`,
+                    end_time: `${date} ${slotEnd}:00`,
+                    participants: [{
+                        first_name: participant.first_name,
+                        last_name: participant.last_name,
+                        email: participant.email
+                    }]
+                };
+
+                return fetch('/api/bookings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+                    },
+                    body: JSON.stringify(bookingData)
+                }).then(async res => {
+                    const data = await res.json();
+                    return { status: res.status, data: data };
                 });
             });
 
@@ -661,23 +669,11 @@
             submitBtn.textContent = 'Booking...';
 
             try {
-                // Create bookings for each service
-                const bookingPromises = Object.values(bookingsByService).map(bookingData => 
-                    fetch('/api/bookings', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
-                        },
-                        body: JSON.stringify(bookingData)
-                    }).then(res => res.json())
-                );
-
                 const results = await Promise.all(bookingPromises);
                 
-                const errors = results.filter(r => !r.success);
+                const errors = results.filter(r => !r.data.success || r.status >= 400);
                 if (errors.length > 0) {
-                    const errorMessages = errors.map(e => e.message || 'Booking failed').join('; ');
+                    const errorMessages = errors.map(e => e.data.message || 'Booking failed').join('; ');
                     showModalError(errorMessages);
                 } else {
                     alert('All appointments booked successfully!');
