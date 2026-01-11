@@ -19,6 +19,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        \Illuminate\Support\Facades\Route::bind('appointment', function ($value) {
+            return \App\Models\Appointment::findOrFail($value);
+        });
     }
 }
