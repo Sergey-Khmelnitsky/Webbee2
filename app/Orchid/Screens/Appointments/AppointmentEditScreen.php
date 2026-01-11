@@ -122,7 +122,7 @@ class AppointmentEditScreen extends Screen
     /**
      * Save appointment
      */
-    public function save(?Appointment $appointment = null, Request $request)
+    public function save(Request $request, ?Appointment $appointment = null): \Illuminate\Http\RedirectResponse
     {
         if ($appointment === null) {
             $appointment = new Appointment();
@@ -139,7 +139,7 @@ class AppointmentEditScreen extends Screen
     /**
      * Remove appointment
      */
-    public function remove(Appointment $appointment)
+    public function remove(Appointment $appointment): \Illuminate\Http\RedirectResponse
     {
         $appointment->delete();
 
