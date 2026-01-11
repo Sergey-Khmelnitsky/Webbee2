@@ -294,6 +294,8 @@ class SlotGeneratorService
 
     /**
      * Generate available time periods from blocked periods
+     * 
+     * Returns periods where end_time is the last possible end time (not start time)
      */
     private function generateAvailablePeriods(array $mergedBlocked, Carbon $workStart, Carbon $workEnd, $config): array
     {
@@ -302,24 +304,25 @@ class SlotGeneratorService
 
         // If no blocked periods, add one period for the entire work day
         if (empty($mergedBlocked)) {
-            $latestStart = $workEnd->copy()->subMinutes($config->duration_minutes);
-            if ($currentStart->lte($latestStart)) {
+            // end_time should be workEnd (last possible end time)
+            // but we need to ensure there's at least one slot possible
+            $earliestEnd = $currentStart->copy()->addMinutes($config->duration_minutes);
+            if ($earliestEnd->lte($workEnd)) {
                 $availablePeriods[] = [
                     'start_time' => $currentStart->format('H:i'),
-                    'end_time' => $latestStart->format('H:i'),
+                    'end_time' => $workEnd->format('H:i'),
                 ];
             }
         } else {
             foreach ($mergedBlocked as $blocked) {
                 if ($currentStart->lt($blocked['start'])) {
-                    // Calculate the latest start time that allows a full appointment before the block
-                    $latestStart = $blocked['start']->copy()->subMinutes($config->duration_minutes);
-                    
-                    // Only add period if there's enough time for at least one appointment
-                    if ($currentStart->lte($latestStart)) {
+                    // end_time should be blocked start (last possible end time before block)
+                    // but we need to ensure there's at least one slot possible
+                    $earliestEnd = $currentStart->copy()->addMinutes($config->duration_minutes);
+                    if ($earliestEnd->lte($blocked['start'])) {
                         $availablePeriods[] = [
                             'start_time' => $currentStart->format('H:i'),
-                            'end_time' => $latestStart->format('H:i'),
+                            'end_time' => $blocked['start']->format('H:i'),
                         ];
                     }
                 }
@@ -329,14 +332,13 @@ class SlotGeneratorService
 
             // Add final period if there's time after last block
             if ($currentStart->lt($workEnd)) {
-                // Calculate the latest start time that allows a full appointment before work end
-                $latestStart = $workEnd->copy()->subMinutes($config->duration_minutes);
-                
-                // Only add period if there's enough time for at least one appointment
-                if ($currentStart->lte($latestStart)) {
+                // end_time should be workEnd (last possible end time)
+                // but we need to ensure there's at least one slot possible
+                $earliestEnd = $currentStart->copy()->addMinutes($config->duration_minutes);
+                if ($earliestEnd->lte($workEnd)) {
                     $availablePeriods[] = [
                         'start_time' => $currentStart->format('H:i'),
-                        'end_time' => $latestStart->format('H:i'),
+                        'end_time' => $workEnd->format('H:i'),
                     ];
                 }
             }
