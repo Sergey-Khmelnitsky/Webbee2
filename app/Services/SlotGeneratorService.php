@@ -9,7 +9,8 @@ use Carbon\Carbon;
 class SlotGeneratorService
 {
     /**
-     * Generate available slots for a service on a specific date
+     * Generate available time periods for booking on a specific date
+     * Returns continuous time intervals when booking is possible
      */
     public function generateAvailableSlots(Service $service, Carbon $date): array
     {
@@ -46,8 +47,8 @@ class SlotGeneratorService
         }
 
         // Parse schedule times
-        $startTime = Carbon::parse($date->format('Y-m-d') . ' ' . $schedule->start_time);
-        $endTime = Carbon::parse($date->format('Y-m-d') . ' ' . $schedule->end_time);
+        $workStart = Carbon::parse($date->format('Y-m-d') . ' ' . $schedule->start_time);
+        $workEnd = Carbon::parse($date->format('Y-m-d') . ' ' . $schedule->end_time);
 
         // Get breaks for this day
         $breaks = $service->breaks()
@@ -58,60 +59,135 @@ class SlotGeneratorService
             ->where('is_recurring', true)
             ->get();
 
+        $breakPeriods = [];
+        foreach ($breaks as $break) {
+            $breakPeriods[] = [
+                'start' => Carbon::parse($date->format('Y-m-d') . ' ' . $break->start_time),
+                'end' => Carbon::parse($date->format('Y-m-d') . ' ' . $break->end_time),
+            ];
+        }
+
         // Get existing appointments for this date
-        $existingAppointments = Appointment::with('participants')
+        $appointments = Appointment::with('participants')
             ->where('service_id', $service->id)
             ->whereDate('start_time', $date->format('Y-m-d'))
             ->whereNull('deleted_at')
-            ->get()
-            ->groupBy(function ($appointment) {
-                return $appointment->start_time->format('H:i');
-            });
+            ->get();
 
-        // Generate slots
-        // Calculate slot interval: duration + break_between
-        // This ensures slots start at fixed intervals (e.g., every 10 minutes)
-        $slotInterval = $config->duration_minutes + $config->break_between_minutes;
+        $appointmentPeriods = [];
+        foreach ($appointments as $appointment) {
+            $appointmentPeriods[] = [
+                'start' => $appointment->start_time,
+                'end' => $appointment->end_time,
+                'participants_count' => $appointment->participants->count(),
+            ];
+        }
+
+        // Build blocked periods: breaks + fully booked time slots
+        $blockedPeriods = $breakPeriods;
         
-        $slots = [];
-        $currentTime = $startTime->copy();
+        // Add fully booked periods (when max_concurrent_clients is reached)
+        $currentTime = $workStart->copy();
+        $slotInterval = $config->duration_minutes + $config->break_between_minutes;
 
-        while ($currentTime->copy()->addMinutes($config->duration_minutes)->lte($endTime)) {
+        while ($currentTime->copy()->addMinutes($config->duration_minutes)->lte($workEnd)) {
             $slotStart = $currentTime->copy();
             $slotEnd = $currentTime->copy()->addMinutes($config->duration_minutes);
 
-            // Check if slot overlaps with any break
-            $isInBreak = $breaks->contains(function ($break) use ($slotStart, $slotEnd) {
-                $breakStart = Carbon::parse($slotStart->format('Y-m-d') . ' ' . $break->start_time);
-                $breakEnd = Carbon::parse($slotStart->format('Y-m-d') . ' ' . $break->end_time);
-                // Check if slot overlaps with break
-                return $slotStart->lt($breakEnd) && $slotEnd->gt($breakStart);
-            });
-
-            if (!$isInBreak) {
-                // Check how many clients are already booked for this exact time slot
-                $slotKey = $slotStart->format('H:i');
-                $bookedCount = $existingAppointments->get($slotKey, collect())->sum(function ($appointment) {
-                    return $appointment->participants->count();
-                });
-
-                $availableCount = $config->max_concurrent_clients - $bookedCount;
-
-                if ($availableCount > 0) {
-                    $slots[] = [
-                        'start_time' => $slotStart->format('H:i'),
-                        'end_time' => $slotEnd->format('H:i'),
-                        'available_count' => $availableCount,
-                        'is_available' => true,
-                    ];
+            // Count bookings for this slot
+            $bookedCount = 0;
+            foreach ($appointmentPeriods as $appointment) {
+                // Check if appointment overlaps with this slot
+                if ($appointment['start']->lt($slotEnd) && $appointment['end']->gt($slotStart)) {
+                    $bookedCount += $appointment['participants_count'];
                 }
             }
 
-            // Move to next slot start time (slot interval)
+            // If slot is fully booked, add to blocked periods
+            if ($bookedCount >= $config->max_concurrent_clients) {
+                $blockedPeriods[] = [
+                    'start' => $slotStart,
+                    'end' => $slotEnd,
+                ];
+            }
+
             $currentTime->addMinutes($slotInterval);
         }
 
-        return $slots;
+        // Sort blocked periods by start time
+        usort($blockedPeriods, function ($a, $b) {
+            if ($a['start']->eq($b['start'])) {
+                return 0;
+            }
+            return $a['start']->gt($b['start']) ? 1 : -1;
+        });
+
+        // Merge overlapping blocked periods
+        $mergedBlocked = [];
+        foreach ($blockedPeriods as $blocked) {
+            if (empty($mergedBlocked)) {
+                $mergedBlocked[] = $blocked;
+            } else {
+                $last = &$mergedBlocked[count($mergedBlocked) - 1];
+                if ($blocked['start']->lte($last['end'])) {
+                    // Merge overlapping periods
+                    if ($blocked['end']->gt($last['end'])) {
+                        $last['end'] = $blocked['end'];
+                    }
+                } else {
+                    $mergedBlocked[] = $blocked;
+                }
+            }
+        }
+
+        // Generate available time periods (work time minus blocked periods)
+        // But adjust end times to account for duration_minutes
+        $availablePeriods = [];
+        $currentStart = $workStart->copy();
+
+        foreach ($mergedBlocked as $blocked) {
+            if ($currentStart->lt($blocked['start'])) {
+                // Calculate the latest start time that allows a full appointment before the block
+                $latestStart = $blocked['start']->copy()->subMinutes($config->duration_minutes);
+                
+                // Only add period if there's enough time for at least one appointment
+                if ($currentStart->lte($latestStart)) {
+                    $availablePeriods[] = [
+                        'start_time' => $currentStart->format('H:i'),
+                        'end_time' => $latestStart->format('H:i'),
+                    ];
+                }
+            }
+            // Move current start to after the blocked period
+            $currentStart = $blocked['end']->copy();
+        }
+
+        // Add final period if there's time after last block
+        if ($currentStart->lt($workEnd)) {
+            // Calculate the latest start time that allows a full appointment before work end
+            $latestStart = $workEnd->copy()->subMinutes($config->duration_minutes);
+            
+            // Only add period if there's enough time for at least one appointment
+            if ($currentStart->lte($latestStart)) {
+                $availablePeriods[] = [
+                    'start_time' => $currentStart->format('H:i'),
+                    'end_time' => $latestStart->format('H:i'),
+                ];
+            }
+        }
+
+        // Filter out periods that are too short for an appointment
+        // Note: end_time is already adjusted to be the latest start time, so we need to check
+        // if there's at least duration_minutes between start and end
+        $availablePeriods = array_filter($availablePeriods, function ($period) use ($config, $date) {
+            $start = Carbon::parse($date->format('Y-m-d') . ' ' . $period['start_time']);
+            $end = Carbon::parse($date->format('Y-m-d') . ' ' . $period['end_time']);
+            // Check if there's enough time for at least one appointment
+            // end_time is already the latest start time, so we check if difference >= duration_minutes
+            return $end->diffInMinutes($start) >= $config->duration_minutes;
+        });
+
+        return array_values($availablePeriods);
     }
 
     /**
