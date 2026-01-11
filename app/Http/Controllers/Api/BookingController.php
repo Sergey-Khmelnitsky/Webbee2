@@ -3,17 +3,20 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\BookingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class BookingController extends Controller
 {
+    public function __construct(
+        private BookingService $bookingService
+    ) {
+    }
+
     /**
      * Create a new booking
-     * 
-     * Accepts booking data and participant details
-     * TODO: Implement actual booking logic
      * 
      * @param Request $request
      * @return JsonResponse
@@ -21,44 +24,53 @@ class BookingController extends Controller
     public function store(Request $request): JsonResponse
     {
         // Validate request
-        $request->validate([
+        $validated = $request->validate([
             'service_id' => 'required|integer|exists:services,id',
             'date' => 'required|date|date_format:Y-m-d',
             'start_time' => 'required|date',
             'end_time' => 'required|date|after:start_time',
-            'participants' => 'required|array|min:1',
+            'participants' => 'required|array|min:1|max:1',
             'participants.*.first_name' => 'required|string|max:255',
             'participants.*.last_name' => 'required|string|max:255',
             'participants.*.email' => 'required|email|max:255',
         ]);
 
-        // Log the booking request (for now, we just log it)
         Log::info('Booking request received', [
-            'service_id' => $request->get('service_id'),
-            'date' => $request->get('date'),
-            'start_time' => $request->get('start_time'),
-            'end_time' => $request->get('end_time'),
-            'participants_count' => count($request->get('participants')),
-            'participants' => $request->get('participants'),
+            'service_id' => $validated['service_id'],
+            'date' => $validated['date'],
+            'start_time' => $validated['start_time'],
+            'end_time' => $validated['end_time'],
+            'participants_count' => count($validated['participants']),
         ]);
 
-        // TODO: Implement actual booking logic
-        // - Validate slot availability
-        // - Check max_concurrent_clients
-        // - Create appointment
-        // - Create participants
-        // - Return success/error response
+        // Create booking using service
+        $result = $this->bookingService->createBooking($validated);
+
+        if ($result['success']) {
+            return response()->json([
+                'success' => true,
+                'message' => $result['message'],
+                'data' => [
+                    'appointment' => [
+                        'id' => $result['appointment']->id,
+                        'service_id' => $result['appointment']->service_id,
+                        'service_name' => $result['appointment']->service->name,
+                        'start_time' => $result['appointment']->start_time->toIso8601String(),
+                        'end_time' => $result['appointment']->end_time->toIso8601String(),
+                        'status' => $result['appointment']->status,
+                        'participant' => [
+                            'first_name' => $result['appointment']->participants->first()->first_name,
+                            'last_name' => $result['appointment']->participants->first()->last_name,
+                            'email' => $result['appointment']->participants->first()->email,
+                        ],
+                    ],
+                ],
+            ], 201);
+        }
 
         return response()->json([
-            'success' => true,
-            'message' => 'Booking request received (not yet processed)',
-            'data' => [
-                'service_id' => $request->get('service_id'),
-                'date' => $request->get('date'),
-                'start_time' => $request->get('start_time'),
-                'end_time' => $request->get('end_time'),
-                'participants' => $request->get('participants'),
-            ],
-        ], 201);
+            'success' => false,
+            'message' => $result['message'],
+        ], 400);
     }
 }
