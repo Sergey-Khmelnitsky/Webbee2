@@ -2,7 +2,8 @@
 
 declare(strict_types=1);
 
-use App\Orchid\Screens\AppointmentListScreen;
+use App\Orchid\Screens\Appointments\AppointmentEditScreen;
+use App\Orchid\Screens\Appointments\AppointmentListScreen;
 use App\Orchid\Screens\Examples\ExampleActionsScreen;
 use App\Orchid\Screens\Examples\ExampleCardsScreen;
 use App\Orchid\Screens\Examples\ExampleChartsScreen;
@@ -84,6 +85,20 @@ Route::screen('roles', RoleListScreen::class)
     ->breadcrumbs(fn (Trail $trail) => $trail
         ->parent('platform.index')
         ->push(__('Roles'), route('platform.systems.roles')));
+
+// Platform > System > Appointments > Appointment
+Route::screen('appointments/{appointment}/edit', AppointmentEditScreen::class)
+    ->name('platform.systems.appointments.edit')
+    ->breadcrumbs(fn (Trail $trail, $appointment) => $trail
+        ->parent('platform.systems.appointments')
+        ->push('Edit Appointment', route('platform.systems.appointments.edit', $appointment)));
+
+// Platform > System > Appointments > Create
+Route::screen('appointments/create', AppointmentEditScreen::class)
+    ->name('platform.systems.appointments.create')
+    ->breadcrumbs(fn (Trail $trail) => $trail
+        ->parent('platform.systems.appointments')
+        ->push('Create', route('platform.systems.appointments.create')));
 
 // Platform > System > Appointments
 Route::screen('appointments', AppointmentListScreen::class)
