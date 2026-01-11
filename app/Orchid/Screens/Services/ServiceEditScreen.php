@@ -16,7 +16,6 @@ use Orchid\Screen\Fields\Matrix;
 use Orchid\Screen\Fields\Select;
 use Orchid\Screen\Fields\Switcher;
 use Orchid\Screen\Fields\TextArea;
-use Orchid\Screen\Fields\Time;
 use Orchid\Screen\Screen;
 use Orchid\Support\Facades\Layout;
 use Orchid\Support\Facades\Toast;
@@ -171,11 +170,13 @@ class ServiceEditScreen extends Screen
                                 ->title($dayNames[$day])
                                 ->sendTrueOrFalse(),
 
-                            Time::make("schedules.{$day}.start_time")
+                            Input::make("schedules.{$day}.start_time")
+                                ->type('time')
                                 ->title('Start Time')
                                 ->canSee(fn ($data) => $data["schedules.{$day}.is_available"] ?? false),
 
-                            Time::make("schedules.{$day}.end_time")
+                            Input::make("schedules.{$day}.end_time")
+                                ->type('time')
                                 ->title('End Time')
                                 ->canSee(fn ($data) => $data["schedules.{$day}.is_available"] ?? false),
                         ]);
@@ -196,8 +197,8 @@ class ServiceEditScreen extends Screen
                             'name' => Input::make('name')
                                 ->type('text')
                                 ->placeholder('e.g., Lunch Break'),
-                            'start_time' => Time::make('start_time'),
-                            'end_time' => Time::make('end_time'),
+                            'start_time' => Input::make('start_time')->type('time'),
+                            'end_time' => Input::make('end_time')->type('time'),
                             'day_of_week' => Select::make('day_of_week')
                                 ->options([
                                     '' => 'All Days',
