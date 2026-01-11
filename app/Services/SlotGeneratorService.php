@@ -457,4 +457,225 @@ class SlotGeneratorService
 
         return $calendarData;
     }
+
+    /**
+     * Get common available slots for multiple services
+     * Returns slots that are available for ALL specified services simultaneously
+     * 
+     * @param string $date Date in Y-m-d format
+     * @param array $serviceIds Array of service IDs
+     * @return array Combined calendar data with common slots
+     */
+    public function getCommonSlotsForServices(string $date, array $serviceIds): array
+    {
+        $targetDate = Carbon::parse($date);
+        
+        \Log::info('getCommonSlotsForServices called', [
+            'date' => $date,
+            'service_ids' => $serviceIds,
+            'target_date' => $targetDate->format('Y-m-d'),
+        ]);
+
+        // Load all services with relations
+        $services = Service::with(['configuration', 'schedules', 'breaks', 'holidays'])
+            ->whereIn('id', $serviceIds)
+            ->where('is_active', true)
+            ->get();
+
+        if ($services->isEmpty()) {
+            return [];
+        }
+
+        // Get available periods for each service
+        $servicePeriods = [];
+        $serviceConfigs = [];
+        
+        foreach ($services as $service) {
+            $config = $service->configuration;
+            if (!$config) {
+                continue;
+            }
+
+            // Check if date is valid for this service
+            $today = Carbon::today();
+            $maxDate = $today->copy()->addDays($config->booking_advance_days);
+            if ($targetDate->isAfter($maxDate) || $targetDate->isBefore($today)) {
+                continue;
+            }
+
+            // Check if holiday
+            if ($this->isHoliday($service, $targetDate)) {
+                continue;
+            }
+
+            $periods = $this->generateAvailableSlots($service, $targetDate);
+            if (!empty($periods)) {
+                $servicePeriods[$service->id] = $periods;
+                $serviceConfigs[$service->id] = [
+                    'service' => $service,
+                    'config' => $config,
+                ];
+            }
+        }
+
+        if (empty($servicePeriods)) {
+            return [];
+        }
+
+        // Find intersection of all periods
+        $commonPeriods = $this->findCommonPeriods($servicePeriods, $serviceConfigs, $targetDate);
+
+        // Build response with all services info but common slots only
+        $calendarData = [];
+        foreach ($serviceConfigs as $serviceId => $serviceData) {
+            $service = $serviceData['service'];
+            $config = $serviceData['config'];
+
+            $calendarData[] = [
+                'id' => $service->id,
+                'name' => $service->name,
+                'description' => $service->description,
+                'configuration' => [
+                    'duration_minutes' => $config->duration_minutes,
+                    'break_between_minutes' => $config->break_between_minutes,
+                    'max_concurrent_clients' => $config->max_concurrent_clients,
+                    'booking_advance_days' => $config->booking_advance_days,
+                ],
+                'date' => [
+                    'date' => $targetDate->format('Y-m-d'),
+                    'day_of_week' => $targetDate->format('l'),
+                    'day_of_week_short' => $targetDate->format('D'),
+                    'slots' => $commonPeriods,
+                    'has_available_slots' => !empty($commonPeriods),
+                ],
+            ];
+        }
+
+        return $calendarData;
+    }
+
+    /**
+     * Find common time periods across multiple services
+     * 
+     * @param array $servicePeriods Array of [service_id => [periods]]
+     * @param array $serviceConfigs Array of [service_id => [service, config]]
+     * @param Carbon $date
+     * @return array Common available periods
+     */
+    private function findCommonPeriods(array $servicePeriods, array $serviceConfigs, Carbon $date): array
+    {
+        if (empty($servicePeriods)) {
+            return [];
+        }
+
+        // Convert periods to time ranges for easier comparison
+        $allRanges = [];
+        foreach ($servicePeriods as $serviceId => $periods) {
+            $ranges = [];
+            foreach ($periods as $period) {
+                $start = Carbon::parse($date->format('Y-m-d') . ' ' . $period['start_time']);
+                $end = Carbon::parse($date->format('Y-m-d') . ' ' . $period['end_time']);
+                $ranges[] = ['start' => $start, 'end' => $end];
+            }
+            $allRanges[$serviceId] = $ranges;
+        }
+
+        // Find intersection of all ranges
+        $commonRanges = [];
+        $firstServiceRanges = array_shift($allRanges);
+
+        foreach ($firstServiceRanges as $range) {
+            $intersectionStart = $range['start'];
+            $intersectionEnd = $range['end'];
+
+            // Check if this range intersects with all other services
+            $isCommon = true;
+            foreach ($allRanges as $otherRanges) {
+                $foundIntersection = false;
+                foreach ($otherRanges as $otherRange) {
+                    // Check if ranges overlap
+                    if ($intersectionStart->lt($otherRange['end']) && $intersectionEnd->gt($otherRange['start'])) {
+                        // Calculate actual intersection
+                        $actualStart = $intersectionStart->gt($otherRange['start']) ? $intersectionStart : $otherRange['start'];
+                        $actualEnd = $intersectionEnd->lt($otherRange['end']) ? $intersectionEnd : $otherRange['end'];
+                        
+                        if ($actualStart->lt($actualEnd)) {
+                            $intersectionStart = $actualStart;
+                            $intersectionEnd = $actualEnd;
+                            $foundIntersection = true;
+                            break;
+                        }
+                    }
+                }
+                if (!$foundIntersection) {
+                    $isCommon = false;
+                    break;
+                }
+            }
+
+            if ($isCommon && $intersectionStart->lt($intersectionEnd)) {
+                $commonRanges[] = [
+                    'start' => $intersectionStart,
+                    'end' => $intersectionEnd,
+                ];
+            }
+        }
+
+        // Convert back to period format
+        $commonPeriods = [];
+        foreach ($commonRanges as $range) {
+            // Find minimum duration and break_between from all services
+            $minDuration = min(array_map(fn($sc) => $sc['config']->duration_minutes, $serviceConfigs));
+            $minBreak = min(array_map(fn($sc) => $sc['config']->break_between_minutes, $serviceConfigs));
+
+            // Generate slots within common period using minimum duration
+            $currentStart = $range['start']->copy();
+            while ($currentStart->copy()->addMinutes($minDuration)->lte($range['end'])) {
+                $slotEnd = $currentStart->copy()->addMinutes($minDuration);
+                
+                $commonPeriods[] = [
+                    'start_time' => $currentStart->format('H:i'),
+                    'end_time' => $slotEnd->format('H:i'),
+                ];
+
+                $currentStart->addMinutes($minDuration + $minBreak);
+            }
+        }
+
+        // Merge overlapping periods
+        return $this->mergePeriods($commonPeriods);
+    }
+
+    /**
+     * Merge overlapping or adjacent periods
+     */
+    private function mergePeriods(array $periods): array
+    {
+        if (empty($periods)) {
+            return [];
+        }
+
+        // Sort by start_time
+        usort($periods, function ($a, $b) {
+            return strcmp($a['start_time'], $b['start_time']);
+        });
+
+        $merged = [];
+        $current = $periods[0];
+
+        for ($i = 1; $i < count($periods); $i++) {
+            $next = $periods[$i];
+            
+            // If periods overlap or are adjacent, merge them
+            if ($current['end_time'] >= $next['start_time']) {
+                $current['end_time'] = max($current['end_time'], $next['end_time']);
+            } else {
+                $merged[] = $current;
+                $current = $next;
+            }
+        }
+
+        $merged[] = $current;
+        return $merged;
+    }
 }

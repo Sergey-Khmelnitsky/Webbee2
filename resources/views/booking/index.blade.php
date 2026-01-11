@@ -270,27 +270,20 @@
             document.getElementById('loadCalendarBtn').disabled = true;
 
             try {
-                // Load calendars for all selected services
-                const calendarPromises = selectedServiceIds.map(serviceId => 
-                    fetch(`/api/calendar?date=${date}&service_id=${serviceId}`)
-                        .then(res => res.json())
-                );
+                // Build query string with service_ids array
+                const serviceIdsParam = selectedServiceIds.map(id => `service_ids[]=${id}`).join('&');
+                const url = `/api/calendar?date=${date}&${serviceIdsParam}`;
 
-                const results = await Promise.all(calendarPromises);
-                
-                // Check for errors
-                const errors = results.filter(r => !r.success);
-                if (errors.length > 0) {
-                    throw new Error('Failed to load some calendars');
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.message || 'Failed to load calendar');
                 }
 
-                // Display calendars for all services
-                const calendarData = results
-                    .filter(r => r.success && r.data && r.data.length > 0)
-                    .map(r => r.data[0]);
-
-                if (calendarData.length > 0) {
-                    displayCalendars(calendarData, date);
+                if (data.success && data.data && data.data.length > 0) {
+                    // If multiple services, data will contain common slots for all services
+                    displayCalendars(data.data, date);
                 } else {
                     showError('No available slots found for the selected date and services');
                 }

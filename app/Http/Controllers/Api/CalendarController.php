@@ -15,13 +15,13 @@ class CalendarController extends Controller
     }
 
     /**
-     * Get calendar data for all services
+     * Get calendar data for services
      * 
      * Returns all data an SPA might need to display a calendar and time selection
      * 
      * Query Parameters:
      * - date (required) - Date in Y-m-d format (e.g., 2026-01-15)
-     * - service_id (optional) - Filter by specific service ID
+     * - service_ids (optional) - Array of service IDs. If multiple, returns common available slots
      * 
      * @return JsonResponse
      */
@@ -29,24 +29,31 @@ class CalendarController extends Controller
     {
         $request->validate([
             'date' => 'required|date|date_format:Y-m-d',
-            'service_id' => 'sometimes|integer|exists:services,id',
+            'service_ids' => 'sometimes|array',
+            'service_ids.*' => 'integer|exists:services,id',
         ]);
 
         $date = $request->get('date');
-        $serviceId = $request->get('service_id');
+        $serviceIds = $request->get('service_ids', []);
 
         \Log::info('Calendar API Request', [
             'date' => $date,
-            'service_id' => $serviceId,
+            'service_ids' => $serviceIds,
         ]);
 
-        $calendarData = $this->slotGenerator->getCalendarDataForDate($date, $serviceId);
+        // If multiple services, find common slots
+        if (count($serviceIds) > 1) {
+            $calendarData = $this->slotGenerator->getCommonSlotsForServices($date, $serviceIds);
+        } else {
+            // Single service or all services
+            $serviceId = !empty($serviceIds) ? $serviceIds[0] : null;
+            $calendarData = $this->slotGenerator->getCalendarDataForDate($date, $serviceId);
+        }
 
         \Log::info('Calendar API Response', [
             'date' => $date,
-            'service_id' => $serviceId,
+            'service_ids' => $serviceIds,
             'services_count' => count($calendarData),
-            'data' => $calendarData,
         ]);
 
         return response()->json([
@@ -54,7 +61,7 @@ class CalendarController extends Controller
             'data' => $calendarData,
             'meta' => [
                 'date' => $date,
-                'service_id' => $serviceId,
+                'service_ids' => $serviceIds,
                 'generated_at' => now()->toIso8601String(),
             ],
         ]);
