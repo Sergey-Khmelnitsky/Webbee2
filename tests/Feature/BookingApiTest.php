@@ -56,7 +56,7 @@ class BookingApiTest extends TestCase
                         [
                             'first_name' => 'John',
                             'last_name' => 'Doe',
-                            'email' => 'john@example.com',
+                            'email' => 'john.doe@test.com',
                         ],
                     ],
                 ],
@@ -81,7 +81,7 @@ class BookingApiTest extends TestCase
                         [
                             'first_name' => 'John',
                             'last_name' => 'Doe',
-                            'email' => 'john@example.com',
+                            'email' => 'john.doe@test.com',
                         ],
                     ],
                 ],
@@ -106,7 +106,7 @@ class BookingApiTest extends TestCase
                         [
                             'first_name' => 'John',
                             'last_name' => 'Doe',
-                            'email' => 'john@example.com',
+                            'email' => 'john.doe@test.com',
                         ],
                     ],
                 ],
@@ -184,7 +184,7 @@ class BookingApiTest extends TestCase
                         [
                             'first_name' => 'John',
                             'last_name' => 'Doe',
-                            'email' => 'john@example.com',
+                            'email' => 'john.doe@test.com',
                         ],
                     ],
                 ],
@@ -212,7 +212,7 @@ class BookingApiTest extends TestCase
             'appointment_id' => $appointment->id,
             'first_name' => 'John',
             'last_name' => 'Doe',
-            'email' => 'john@example.com',
+            'email' => 'john.doe@test.com',
         ]);
     }
 
@@ -231,7 +231,7 @@ class BookingApiTest extends TestCase
                         [
                             'first_name' => 'John',
                             'last_name' => 'Doe',
-                            'email' => 'john@example.com',
+                            'email' => 'john.doe@test.com',
                         ],
                     ],
                 ],
@@ -260,7 +260,7 @@ class BookingApiTest extends TestCase
                         [
                             'first_name' => 'John',
                             'last_name' => 'Doe',
-                            'email' => 'john@example.com',
+                            'email' => 'john.doe@test.com',
                         ],
                     ],
                 ],
@@ -296,7 +296,7 @@ class BookingApiTest extends TestCase
                 'appointment_id' => $appointment->id,
                 'first_name' => "User{$i}",
                 'last_name' => "Test",
-                'email' => "user{$i}@example.com",
+                'email' => "user{$i}@test.com",
             ]);
         }
         
@@ -312,7 +312,7 @@ class BookingApiTest extends TestCase
                         [
                             'first_name' => 'John',
                             'last_name' => 'Doe',
-                            'email' => 'john@example.com',
+                            'email' => 'john.doe@test.com',
                         ],
                     ],
                 ],
@@ -346,7 +346,7 @@ class BookingApiTest extends TestCase
                         [
                             'first_name' => 'John',
                             'last_name' => 'Doe',
-                            'email' => 'john@example.com',
+                            'email' => 'john.doe@test.com',
                         ],
                     ],
                 ],
@@ -356,7 +356,7 @@ class BookingApiTest extends TestCase
                         [
                             'first_name' => 'Jane',
                             'last_name' => 'Smith',
-                            'email' => 'jane@example.com',
+                            'email' => 'jane.smith@test.com',
                         ],
                     ],
                 ],

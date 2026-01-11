@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\SlotGeneratorService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class CalendarController extends Controller
 {
@@ -28,10 +29,13 @@ class CalendarController extends Controller
     public function index(Request $request): JsonResponse
     {
         $request->validate([
-            'date' => 'required|date|date_format:Y-m-d',
-            'service_ids' => 'sometimes|array',
-            'service_ids.*' => 'integer|exists:services,id',
-        ]);
+                'date' => 'required|date|date_format:Y-m-d',
+                'service_ids' => 'sometimes|array',
+                'service_ids.*' => [
+                    'integer',
+                    Rule::exists('services', 'id')->where('is_active', true),
+                ],
+            ]);
 
         $date = $request->get('date');
         $serviceIds = $request->get('service_ids', []);
