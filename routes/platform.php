@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 use App\Orchid\Screens\Appointments\AppointmentEditScreen;
 use App\Orchid\Screens\Appointments\AppointmentListScreen;
-use App\Orchid\Screens\ServiceEditScreen;
-use App\Orchid\Screens\ServiceListScreen;
+use App\Orchid\Screens\Services\ServiceEditScreen;
+use App\Orchid\Screens\Services\ServiceListScreen;
 use App\Orchid\Screens\Examples\ExampleActionsScreen;
 use App\Orchid\Screens\Examples\ExampleCardsScreen;
 use App\Orchid\Screens\Examples\ExampleChartsScreen;

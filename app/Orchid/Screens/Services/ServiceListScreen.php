@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Orchid\Screens;
+namespace App\Orchid\Screens\Services;
 
 use App\Models\Service;
 use Orchid\Screen\Actions\Button;
