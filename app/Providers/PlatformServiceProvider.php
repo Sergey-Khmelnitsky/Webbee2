@@ -2,7 +2,6 @@
 
 namespace App\Providers;
 
-use App\Orchid\Screens\AppointmentListScreen;
 use Illuminate\Support\ServiceProvider;
 use Orchid\Platform\Dashboard;
 use Orchid\Platform\ItemMenu;
@@ -23,10 +22,6 @@ class PlatformServiceProvider extends ServiceProvider
      */
     public function boot(Dashboard $dashboard): void
     {
-        $dashboard->registerResource([
-            AppointmentListScreen::class,
-        ]);
-
         $dashboard->menu
             ->add(Menu::MAIN,
                 ItemMenu::label('Записи на прием')
