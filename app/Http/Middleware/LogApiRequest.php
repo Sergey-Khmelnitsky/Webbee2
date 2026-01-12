@@ -30,9 +30,30 @@ class LogApiRequest
 
         // Log request in JSON format
         Log::info('API Request', $requestData);
+        
+        // Additional logging for POST bookings requests
+        if ($request->isMethod('POST') && $request->path() === 'api/bookings') {
+            Log::info('POST Booking Request Detected', [
+                'path' => $request->path(),
+                'method' => $request->method(),
+                'has_body' => !empty($request->all()),
+                'body_keys' => array_keys($request->all()),
+            ]);
+        }
 
-        // Process request
-        $response = $next($request);
+        try {
+            // Process request
+            $response = $next($request);
+        } catch (\Exception $e) {
+            // Log exception before re-throwing
+            Log::error('API Request Exception', [
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'exception' => get_class($e),
+                'message' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
 
         // Prepare response data for logging
         $responseData = [
@@ -43,6 +64,20 @@ class LogApiRequest
         // Try to get response content if it's JSON
         if ($response instanceof \Illuminate\Http\JsonResponse) {
             $responseData['content'] = json_decode($response->getContent(), true);
+        } else {
+            // Try to parse JSON from response content
+            $content = $response->getContent();
+            $contentType = $response->headers->get('Content-Type', '');
+            
+            if (str_contains($contentType, 'application/json') || 
+                (is_string($content) && !empty($content) && json_decode($content) !== null)) {
+                $decoded = json_decode($content, true);
+                if (json_last_error() === JSON_ERROR_NONE) {
+                    $responseData['content'] = $decoded;
+                } else {
+                    $responseData['content'] = substr($content, 0, 500); // Log first 500 chars if not valid JSON
+                }
+            }
         }
 
         // Log response in JSON format
